@@ -1,7 +1,7 @@
  import { Request, Response, NextFunction } from "express";
 import { UserRole } from "../models/admin.model";
 
-// 1. Define the custom Request type (or import it from '../middleware/auth' if you defined it there)
+
 export interface AuthRequest extends Request {
   user?: {
     id: string;
