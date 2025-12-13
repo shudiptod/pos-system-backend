@@ -42,3 +42,20 @@ JWT_SECRET=your_super_secret_key
 ```
 
 
+4. Database Setup
+Run the migrations to create tables and seed the initial Admin user:
+
+
+
+# 1. Generate and push schema to DB
+```bash
+npm run migrate
+```
+
+# 2. Seed default Admin user
+
+```bash
+npm run seed:admin
+```
+
+
