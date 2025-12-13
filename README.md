@@ -29,3 +29,16 @@ Clone the repository and install dependencies:
 git clone <repository-url>
 cd ecommerce-backend
 npm install
+```
+
+3. Environment Configuration
+Create a .env file in the root directory:
+
+
+```bash
+PORT=5001
+DATABASE_URL=postgres://user:password@localhost:5432/ecommerce_db
+JWT_SECRET=your_super_secret_key
+```
+
+
