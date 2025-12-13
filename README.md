@@ -189,3 +189,119 @@ npm run seed:admin   # Creates the initial admin account (requires args)
 * Ensure PostgreSQL is running before starting the server
 * Always keep `.env` out of version control
 * Use **Bearer Token** authentication for protected routes
+
+
+
+### 🛍️ Products & Categories
+
+**Base URL:** `/api/products`
+
+| Method  | Endpoint        | Description                            | Auth Required |
+| :------ | :-------------- | :------------------------------------- | :------------ |
+| `POST`  | `/categories`   | Create a new category                  | ✅ Yes (Admin) |
+| `GET`   | `/categories`   | Get all categories                     | ❌ No          |
+| `POST`  | `/`             | Create a new product with variants     | ✅ Yes (Admin) |
+| `GET`   | `/`             | List products (Filter, Sort, Paginate) | ❌ No          |
+| `GET`   | `/:id`          | Get single product details             | ❌ No          |
+| `PATCH` | `/variants/:id` | Update a specific product variant      | ✅ Yes (Admin) |
+
+---
+
+## 🔍 Endpoint Examples (cURL)
+
+### 1️⃣ Create Category (Admin)
+
+**POST** `/categories`
+
+```bash
+curl -X POST http://localhost:5001/api/products/categories \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Men",
+    "slug": "men-fashion",
+    "imagePath": "https://example.com/men.jpg"
+  }'
+```
+
+---
+
+### 2️⃣ Get All Categories
+
+**GET** `/categories`
+
+```bash
+curl "http://localhost:5001/api/products/categories"
+```
+
+---
+
+### 3️⃣ Create Product (Admin)
+
+**POST** `/`
+
+Creates a product and its initial variants in one transaction.
+
+```bash
+curl -X POST http://localhost:5001/api/products \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Premium Cotton T-Shirt",
+    "description": "High quality cotton",
+    "categoryId": "YOUR_CATEGORY_UUID",
+    "slug": "premium-cotton-t-shirt",
+    "basePrice": 1500,
+    "images": ["https://example.com/tshirt.jpg"],
+    "isPublished": true,
+    "variants": [
+      {
+        "title": "Blue / M",
+        "sku": "TSH-BL-M",
+        "price": 1500,
+        "stock": 100,
+        "options": { "color": "Blue", "size": "M" }
+      }
+    ]
+  }'
+```
+
+---
+
+### 4️⃣ Get All Products (Public)
+
+**GET** `/`
+
+Supports pagination, sorting, and filtering.
+
+```bash
+# Example: Page 1, Sort by Price Low-High, Search "Shirt"
+curl "http://localhost:5001/api/products?page=1&limit=10&sort=price_asc&search=shirt"
+```
+
+---
+
+### 5️⃣ Get Single Product
+
+**GET** `/:id`
+
+```bash
+curl "http://localhost:5001/api/products/YOUR_PRODUCT_UUID"
+```
+
+---
+
+### 6️⃣ Update Variant (Admin)
+
+**PATCH** `/variants/:id`
+
+```bash
+curl -X PATCH http://localhost:5001/api/products/variants/YOUR_VARIANT_UUID \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "price": 1400,
+    "stock": 95
+  }'
+```
+
