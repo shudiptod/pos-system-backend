@@ -1,7 +1,7 @@
 import { Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm"; // Required for WHERE clauses
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import {
   admins,

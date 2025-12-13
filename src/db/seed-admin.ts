@@ -18,49 +18,78 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 async function createSuperAdmin() {
-  const email = 'ashish@store.com';
-  const password = 'admin123';
+  const args = process.argv.slice(2);
+  const emailInput = args[0];
+  const passwordInput = args[1];
+
+  if (!emailInput || !passwordInput) {
+    console.error('❌ Error: Missing arguments.');
+    console.error('Usage: npm run seed:admin -- <email> <password>');
+    console.error('Example: npm run seed:admin -- ashish@store.com admin123');
+    process.exit(1);
+  }
+
   const name = 'Super Admin';
   const role = 'SUPER_ADMIN';
 
-  // 1️⃣ Create user in Supabase Auth
+  console.log(`Creating Super Admin...`);
+  console.log(`Email: ${emailInput}`);
+
+
   const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-    email,
-    password,
+    email: emailInput,
+    password: passwordInput,
     email_confirm: true,
   });
 
   if (authError) {
-    console.error('Auth error:', authError.message);
-    process.exit(1);
+    console.log('⚠️ Auth Note:', authError.message); 
+    if (!authError.message.includes('already registered')) {
+       process.exit(1);
+    }
   }
 
-  // 2️⃣ Hash password for your DB
-  const passwordHash = await bcrypt.hash(password, 12);
 
-  // 3️⃣ Upsert into admins table
+  let userId = authUser?.user?.id;
+  
+  if (!userId) {
+     const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', emailInput).single();
+     const { data: listData } = await supabase.auth.admin.listUsers();
+     const found = listData.users.find(u => u.email === emailInput);
+     if (found) userId = found.id;
+  }
+
+  if (!userId) {
+      console.error("❌ Could not find or create user ID.");
+      process.exit(1);
+  }
+
+
+  const passwordHash = await bcrypt.hash(passwordInput, 12);
+
+
   const { error: dbError } = await supabase.from('admins').upsert(
     {
-      id: authUser.user.id,
-      email,
+      id: userId,
+      email: emailInput,
       name,
       role,
       password_hash: passwordHash,
       is_active: true,
     },
-    { onConflict: 'id' } // Avoid duplicates
+    { onConflict: 'id' }
   );
 
   if (dbError) {
-    console.error('DB error:', dbError.message);
+    console.error('❌ DB Error:', dbError.message);
     process.exit(1);
   }
 
-  console.log('SUPER ADMIN CREATED SUCCESSFULLY!');
-  console.log('Email   →', email);
-  console.log('Password →', password);
+  console.log('✅ SUPER ADMIN CREATED SUCCESSFULLY!');
+  console.log('-----------------------------------');
+  console.log('Email    →', emailInput);
+  console.log('Password →', passwordInput);
+  console.log('-----------------------------------');
 }
 
 createSuperAdmin().catch(console.error);
-
-
