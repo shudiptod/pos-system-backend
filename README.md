@@ -55,7 +55,7 @@ npm run migrate
 # 2. Seed default Admin user
 
 ```bash
-npm run seed:admin
+npm run seed:admin -- test@test.com  mySecretPass123
 ```
 
 
