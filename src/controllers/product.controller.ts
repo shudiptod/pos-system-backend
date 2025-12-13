@@ -9,7 +9,6 @@ import { products, createProductSchema } from "../models/product.model";
 import { categories } from "../models/category.model";
 import { productVariants, createVariantSchema } from "../models/productVariant.model";
 
-
 // --- COMPOSITE SCHEMA FOR API REQUEST ---
 // We extend the base product schema to expect an array of variants
 const createProductWithVariantsSchema = createProductSchema.extend({
@@ -32,7 +31,6 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
 
     // 2. Start Transaction
     const result = await db.transaction(async (tx) => {
-      
       // A. Insert Product
       const [newProduct] = await tx
         .insert(products)
@@ -50,20 +48,16 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
       }));
 
       // C. Insert Variants
-      const newVariants = await tx
-        .insert(productVariants)
-        .values(variantsWithProductId)
-        .returning();
+      const newVariants = await tx.insert(productVariants).values(variantsWithProductId).returning();
 
       return { product: newProduct, variants: newVariants };
     });
 
     res.status(201).json({ success: true, data: result });
-
   } catch (error: any) {
     console.error(error);
     // Handle Unique Constraint errors (e.g., Duplicate Slug or SKU)
-    if (error.code === '23505') {
+    if (error.code === "23505") {
       return res.status(409).json({ success: false, message: "Duplicate Slug or SKU detected" });
     }
     res.status(500).json({ success: false, message: error.message });
@@ -78,18 +72,12 @@ export const getProductById = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // Fetch Product
-    const [product] = await db
-        .select()
-        .from(products)
-        .where(eq(products.id, id));
+    const [product] = await db.select().from(products).where(eq(products.id, id));
 
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     // Fetch Associated Variants
-    const variants = await db
-        .select()
-        .from(productVariants)
-        .where(eq(productVariants.productId, id));
+    const variants = await db.select().from(productVariants).where(eq(productVariants.productId, id));
 
     res.json({ success: true, data: { ...product, variants } });
   } catch (error: any) {
@@ -102,40 +90,40 @@ export const getProductById = async (req: Request, res: Response) => {
 // ---------------------------------------------------------
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    // 1. Destructure and sanitize query params
+    // 1. Destructure query params
     const {
-      categoryId,
+      category,
       search,
       minPrice,
       maxPrice,
       page = "1",
-      limit = "20",
+      limit = "12",
       sort = "newest",
     } = req.query as {
-      categoryId?: string;
+      category?: string;
       search?: string;
       minPrice?: string;
       maxPrice?: string;
       page?: string;
       limit?: string;
-      sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "name_asc" | "name_desc";
+      sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "name_asc";
     };
 
     // 2. Pagination Calculations
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 12), 100); // Cap limit at 100
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 12), 100);
     const offset = (pageNum - 1) * limitNum;
 
     // 3. Build WHERE Conditions
-    // Always filter by isPublished = true for public routes
     const conditions = [eq(products.isPublished, true)];
 
-    if (categoryId) {
-      conditions.push(eq(products.categoryId, categoryId));
+    // FILTER BY CATEGORY SLUG
+    // If a category slug is provided, we filter the JOINED table 'categories'
+    if (category) {
+      conditions.push(eq(categories.slug, category));
     }
-    
+
     if (search) {
-      // ilike is case-insensitive search
       conditions.push(ilike(products.title, `%${search}%`));
     }
 
@@ -147,9 +135,8 @@ export const getProducts = async (req: Request, res: Response) => {
       conditions.push(lte(products.basePrice, parseInt(maxPrice)));
     }
 
-    // 4. Determine Sorting
-    let orderByClause: any = desc(products.createdAt); // Default
-
+    // 4. Sorting Logic
+    let orderByClause: any = desc(products.createdAt);
     switch (sort) {
       case "price_asc":
         orderByClause = asc(products.basePrice);
@@ -163,44 +150,42 @@ export const getProducts = async (req: Request, res: Response) => {
       case "oldest":
         orderByClause = asc(products.createdAt);
         break;
-      case "newest":
       default:
         orderByClause = desc(products.createdAt);
         break;
     }
 
-    // 5. Execute Queries (Data + Count) in Parallel
+    // 5. Execute Queries
     const [data, totalCountResult] = await Promise.all([
       db
         .select({
-            id: products.id,
-            title: products.title,
-            slug: products.slug,
-            basePrice: products.basePrice,
-            images: products.images,
-            categoryId: products.categoryId,
-            createdAt: products.createdAt,
-            // Optional: Join with Category to get category name if needed
-            categoryName: categories.name,
+          id: products.id,
+          title: products.title,
+          slug: products.slug,
+          basePrice: products.basePrice,
+          images: products.images,
+          categoryId: products.categoryId,
+          createdAt: products.createdAt,
+          categoryName: categories.name,
+          categorySlug: categories.slug,
         })
         .from(products)
-        .leftJoin(categories, eq(products.categoryId, categories.id)) // Join for context
+        .leftJoin(categories, eq(products.categoryId, categories.id))
         .where(and(...conditions))
         .orderBy(orderByClause)
         .limit(limitNum)
         .offset(offset),
-      
-      // Count query for pagination metadata
+
       db
         .select({ count: sql<number>`count(*)` })
         .from(products)
-        .where(and(...conditions))
+        .leftJoin(categories, eq(products.categoryId, categories.id)) // <--- ADDED THIS
+        .where(and(...conditions)),
     ]);
 
     const total = Number(totalCountResult[0]?.count || 0);
     const totalPages = Math.ceil(total / limitNum);
 
-    // 6. Return Response
     res.json({
       success: true,
       data,
@@ -213,13 +198,8 @@ export const getProducts = async (req: Request, res: Response) => {
         hasPrev: pageNum > 1,
       },
     });
-
   } catch (error: any) {
     console.error("Get Products Error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch products" });
   }
 };
-
-
-
-
