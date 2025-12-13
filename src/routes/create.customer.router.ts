@@ -6,6 +6,6 @@ import { authorizeResource } from "../middleware/permissions";
 const router = Router();
 
 // Only allowed roles can create a customer
-router.post("/", authenticateJWT as any, authorizeResource("customer", "create"), createCustomer as any);
+router.post("/", authenticateJWT as any, authorizeResource("customer", "create") as any, createCustomer as any);
 
 export default router;

@@ -1,219 +1,14 @@
-// // src/controllers/product.controller.ts
-// import { Request, Response } from "express";
-// import { eq, and, like, gte, lte, sql, desc, asc } from "drizzle-orm";
-// import { db } from "../db/index";
-// import { products } from "../models/product.model";
-
-// // 1. GET ALL PRODUCTS (With filters/sort/pagination)
-// export const getProducts = async (req: Request, res: Response) => {
-//   try {
-//     const {
-//       collection,
-//       category,
-//       search,
-//       minPrice,
-//       maxPrice,
-//       page = "1",
-//       limit = "20",
-//       sort = "newest",
-//     } = req.query as {
-//       collection?: string;
-//       category?: string;
-//       search?: string;
-//       minPrice?: string;
-//       maxPrice?: string;
-//       page?: string;
-//       limit?: string;
-//       sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "name_asc";
-//     };
-
-//     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-//     const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
-//     const offset = (pageNum - 1) * limitNum;
-
-//     // Build WHERE conditions
-//     const conditions = [eq(products.isActive, true)];
-
-//     if (collection) conditions.push(eq(products.collection, collection));
-//     if (category) conditions.push(eq(products.category, category));
-//     if (search) conditions.push(like(products.name, `%${search}%`));
-//     if (minPrice) conditions.push(gte(products.priceCents, Number(minPrice)));
-//     if (maxPrice) conditions.push(lte(products.priceCents, Number(maxPrice)));
-
-//     // Sorting Logic
-//     let orderByClause: any = desc(products.createdAt);
-
-//     switch (sort) {
-//       case "price_asc":
-//         orderByClause = asc(products.priceCents);
-//         break;
-//       case "price_desc":
-//         orderByClause = desc(products.priceCents);
-//         break;
-//       case "name_asc":
-//         orderByClause = asc(products.name);
-//         break;
-//       case "oldest":
-//         orderByClause = asc(products.createdAt);
-//         break;
-//       default:
-//         orderByClause = desc(products.createdAt);
-//         break;
-//     }
-
-//     // Execute queries in parallel
-//     const [items, totalResult] = await Promise.all([
-//       db
-//         .select({
-//           id: products.id,
-//           name: products.name,
-//           slug: products.slug,
-//           description: products.description,
-//           priceCents: products.priceCents,
-//           imagePath: products.imagePath,
-//           stock: products.stock,
-//           category: products.category,
-//           collection: products.collection,
-//           isActive: products.isActive,
-//           createdAt: products.createdAt,
-//           updatedAt: products.updatedAt,
-//         })
-//         .from(products)
-//         .where(and(...conditions))
-//         .orderBy(orderByClause)
-//         .limit(limitNum)
-//         .offset(offset),
-
-//       db
-//         .select({ count: sql<number>`count(*)` })
-//         .from(products)
-//         .where(and(...conditions))
-//         .then((r) => Number(r[0].count)),
-//     ]);
-
-//     res.json({
-//       success: true,
-//       data: items,
-//       pagination: {
-//         page: pageNum,
-//         limit: limitNum,
-//         total: totalResult,
-//         totalPages: Math.ceil(totalResult / limitNum),
-//         hasNext: pageNum < Math.ceil(totalResult / limitNum),
-//         hasPrev: pageNum > 1,
-//       },
-//     });
-//   } catch (error: any) {
-//     console.error("Product fetch error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: error.message || "Failed to fetch products",
-//     });
-//   }
-// };
-
-// // 2. GET SINGLE PRODUCT
-// export const getProductById = async (req: Request, res: Response) => {
-//   try {
-//     const { id } = req.params;
-
-//     const result = await db
-//       .select()
-//       .from(products)
-//       .where(and(eq(products.id, id), eq(products.isActive, true)))
-//       .limit(1);
-
-//     if (!result[0]) {
-//       return res.status(404).json({ success: false, message: "Product not found" });
-//     }
-
-//     res.json({ success: true, data: result[0] });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: "Server error" });
-//   }
-// };
-
-// // 3. CREATE PRODUCT (Admin)
-// export const createProduct = async (req: Request, res: Response) => {
-//   try {
-//     const result = await db
-//       .insert(products)
-//       .values({
-//         ...(req as any).validatedData,
-//         createdByAdminId: (req as any).user!.id,
-//       })
-//       .returning();
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Product created successfully",
-//       data: result[0],
-//     });
-//   } catch (error: any) {
-//     res.status(500).json({
-//       success: false,
-//       message: error.message || "Failed to create product",
-//     });
-//   }
-// };
-
-// // 4. UPDATE PRODUCT (Manager+)
-// export const updateProduct = async (req: Request, res: Response) => {
-//   try {
-//     const { id } = req.params;
-
-//     const result = await db
-//       .update(products)
-//       .set({ ...(req as any).validatedData, updatedAt: new Date() })
-//       .where(eq(products.id, id))
-//       .returning();
-
-//     if (result.length === 0) {
-//       return res.status(404).json({ success: false, message: "Product not found" });
-//     }
-
-//     res.json({
-//       success: true,
-//       message: "Product updated successfully",
-//       data: result[0],
-//     });
-//   } catch (error: any) {
-//     res.status(500).json({ success: false, message: error.message });
-//   }
-// };
-
-// // 5. DELETE PRODUCT (Manager+)
-// export const deleteProduct = async (req: Request, res: Response) => {
-//   try {
-//     const { id } = req.params;
-
-//     const result = await db
-//       .delete(products)
-//       .where(eq(products.id, id))
-//       .returning();
-
-//     if (result.length === 0) {
-//       return res.status(404).json({ success: false, message: "Product not found" });
-//     }
-
-//     res.status(204).send();
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: "Failed to delete product" });
-//   }
-// };
-
-
-
-
 import { Request, Response } from "express";
 import { db } from "../db";
-import { eq } from "drizzle-orm";
+import { eq, and, ilike, gte, lte, desc, asc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { AuthRequest } from "../middleware/auth"; // Assuming you have this
 
 // Import Models
 import { products, createProductSchema } from "../models/product.model";
+import { categories } from "../models/category.model";
 import { productVariants, createVariantSchema } from "../models/productVariant.model";
+
 
 // --- COMPOSITE SCHEMA FOR API REQUEST ---
 // We extend the base product schema to expect an array of variants
@@ -307,12 +102,124 @@ export const getProductById = async (req: Request, res: Response) => {
 // ---------------------------------------------------------
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    const limit = 10;
-    // Simple fetch. For advanced filtering, you'd add WHERE clauses here.
-    const allProducts = await db.select().from(products).limit(limit);
+    // 1. Destructure and sanitize query params
+    const {
+      categoryId,
+      search,
+      minPrice,
+      maxPrice,
+      page = "1",
+      limit = "20",
+      sort = "newest",
+    } = req.query as {
+      categoryId?: string;
+      search?: string;
+      minPrice?: string;
+      maxPrice?: string;
+      page?: string;
+      limit?: string;
+      sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "name_asc" | "name_desc";
+    };
+
+    // 2. Pagination Calculations
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 12), 100); // Cap limit at 100
+    const offset = (pageNum - 1) * limitNum;
+
+    // 3. Build WHERE Conditions
+    // Always filter by isPublished = true for public routes
+    const conditions = [eq(products.isPublished, true)];
+
+    if (categoryId) {
+      conditions.push(eq(products.categoryId, categoryId));
+    }
     
-    res.json({ success: true, data: allProducts });
+    if (search) {
+      // ilike is case-insensitive search
+      conditions.push(ilike(products.title, `%${search}%`));
+    }
+
+    if (minPrice) {
+      conditions.push(gte(products.basePrice, parseInt(minPrice)));
+    }
+
+    if (maxPrice) {
+      conditions.push(lte(products.basePrice, parseInt(maxPrice)));
+    }
+
+    // 4. Determine Sorting
+    let orderByClause: any = desc(products.createdAt); // Default
+
+    switch (sort) {
+      case "price_asc":
+        orderByClause = asc(products.basePrice);
+        break;
+      case "price_desc":
+        orderByClause = desc(products.basePrice);
+        break;
+      case "name_asc":
+        orderByClause = asc(products.title);
+        break;
+      case "oldest":
+        orderByClause = asc(products.createdAt);
+        break;
+      case "newest":
+      default:
+        orderByClause = desc(products.createdAt);
+        break;
+    }
+
+    // 5. Execute Queries (Data + Count) in Parallel
+    const [data, totalCountResult] = await Promise.all([
+      db
+        .select({
+            id: products.id,
+            title: products.title,
+            slug: products.slug,
+            basePrice: products.basePrice,
+            images: products.images,
+            categoryId: products.categoryId,
+            createdAt: products.createdAt,
+            // Optional: Join with Category to get category name if needed
+            categoryName: categories.name,
+        })
+        .from(products)
+        .leftJoin(categories, eq(products.categoryId, categories.id)) // Join for context
+        .where(and(...conditions))
+        .orderBy(orderByClause)
+        .limit(limitNum)
+        .offset(offset),
+      
+      // Count query for pagination metadata
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(products)
+        .where(and(...conditions))
+    ]);
+
+    const total = Number(totalCountResult[0]?.count || 0);
+    const totalPages = Math.ceil(total / limitNum);
+
+    // 6. Return Response
+    res.json({
+      success: true,
+      data,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+      },
+    });
+
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Get Products Error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch products" });
   }
 };
+
+
+
+
