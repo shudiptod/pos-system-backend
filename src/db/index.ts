@@ -1,4 +1,4 @@
-// src/db/index.ts
+
 import dotenv from 'dotenv';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -7,6 +7,7 @@ dotenv.config();
 import { admins } from '../models/admin.model';
 import { products } from '../models/product.model';
 import { customers } from '../models/customer.model';
+import { cartItems } from '../models/cartItems.model';
 
 const connectionString = process.env.DATABASE_URL
 
@@ -19,7 +20,8 @@ export const db = drizzle(client, {
   schema: {
     admins,
     products,
-    customers
+    customers,
+    cartItems
   },
 });
 

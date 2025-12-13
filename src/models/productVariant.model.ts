@@ -1,4 +1,4 @@
-// src/models/productVariant.model.ts
+
 import { pgTable, uuid, text, integer, jsonb } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { products } from './product.model';

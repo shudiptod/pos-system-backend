@@ -1,5 +1,5 @@
 
-
+//admin auth middleware
 
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";

@@ -1,10 +1,11 @@
 import { Request, Response } from "express";
-import { registerCustomerSchema } from "../models/customer.model";
+import { registerCustomerSchema, updateCustomerSchema, customers, addresses } from "../models/customer.model";
 import { db } from "../db";
-import { customers } from "../models/customer.model";
 import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
+import { eq, ne, and } from "drizzle-orm";
 import jwt from "jsonwebtoken";
+
+import { AuthRequest } from "../middleware/customerAuth";
 
 export const registerUser = async (req: Request, res: Response) => {
   try {
@@ -103,5 +104,75 @@ export const loginUser = async (req: Request, res: Response) => {
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+export const updateCustomer = async (req: AuthRequest, res: Response) => {
+  try {
+    const customerId = req.customer?.id;
+    if (!customerId) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    // 1. Validate using the imported schema
+    const parsed = updateCustomerSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, errors: parsed.error.format() });
+    }
+
+    const { address, ...profileData } = parsed.data;
+
+    // 2. Check for Unique Conflicts (Email/Phone)
+    if (profileData.email || profileData.phone) {
+      const existingUser = await db.query.customers.findFirst({
+        where: and(profileData.email ? eq(customers.email, profileData.email) : undefined, ne(customers.id, customerId)),
+      });
+
+      if (existingUser) {
+        return res.status(409).json({ success: false, message: "Email or Phone already in use" });
+      }
+    }
+
+    // 3. Transaction
+    const result = await db.transaction(async (tx) => {
+      let updatedUser;
+      let newAddress = null;
+
+      // Update Profile
+      if (Object.keys(profileData).length > 0) {
+        [updatedUser] = await tx.update(customers).set(profileData).where(eq(customers.id, customerId)).returning({
+          id: customers.id,
+          name: customers.name,
+          email: customers.email,
+          phone: customers.phone,
+        });
+      }
+
+      // Insert Address
+      if (address) {
+        if (address.isDefault) {
+          await tx.update(addresses).set({ isDefault: false }).where(eq(addresses.customerId, customerId));
+        }
+
+        [newAddress] = await tx
+          .insert(addresses)
+          .values({
+            customerId: customerId,
+            ...address,
+          })
+          .returning();
+      }
+
+      return { user: updatedUser, address: newAddress };
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: result,
+    });
+  } catch (err: any) {
+    console.error("Update Error:", err);
+    if (err.code === "23505") return res.status(409).json({ success: false, message: "Duplicate data detected" });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
