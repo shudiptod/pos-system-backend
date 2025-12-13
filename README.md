@@ -27,5 +27,5 @@ Clone the repository and install dependencies:
 
 ```bash
 git clone <repository-url>
-cd ecommerce-backend-api
+cd ecommerce-backend
 npm install
