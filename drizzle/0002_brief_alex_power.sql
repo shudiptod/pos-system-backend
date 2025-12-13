@@ -1,0 +1,1 @@
+ALTER TABLE "products" ALTER COLUMN "image_path" DROP NOT NULL;
