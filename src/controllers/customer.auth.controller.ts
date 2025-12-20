@@ -2,10 +2,12 @@ import { Request, Response } from "express";
 import { registerCustomerSchema, updateCustomerSchema, customers, addresses } from "../models/customer.model";
 import { db } from "../db";
 import bcrypt from "bcrypt";
-import { eq, ne, and } from "drizzle-orm";
+import { eq, ne, and,or } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 
 import { AuthRequest } from "../middleware/customerAuth";
+
+
 
 export const registerUser = async (req: Request, res: Response) => {
   try {
@@ -19,12 +21,30 @@ export const registerUser = async (req: Request, res: Response) => {
 
     const { email, password, name, phone } = parsed.data;
 
-    const existing = await db.select().from(customers).where(eq(customers.email, email));
+    // 1. Check for existing user by Email OR Phone using the 'or()' operator
+    const [existingUser] = await db
+      .select()
+      .from(customers)
+      .where(or(eq(customers.email, email), eq(customers.phone, phone)))
+      .limit(1);
 
-    if (existing.length > 0) {
+    // 2. If a user is found, determine precisely which field matched
+    if (existingUser) {
+      let errorMessage = "User already registered.";
+      let errorField = "general";
+
+      if (existingUser.email === email) {
+        errorMessage = "Email is already registered.";
+        errorField = "email";
+      } else if (existingUser.phone === phone) {
+        errorMessage = "Phone number is already registered.";
+        errorField = "phone";
+      }
+
       return res.status(409).json({
         success: false,
-        message: "Email already registered",
+        message: errorMessage,
+        field: errorField,
       });
     }
 
