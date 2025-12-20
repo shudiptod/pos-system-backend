@@ -108,6 +108,7 @@ npm start
 | ------ | ----------- | ------------------------------------- | -------------- |
 | POST   | `/register` | Register a new customer               | ❌ No           |
 | POST   | `/login`    | Login and receive a JWT token         | ❌ No           |
+| PATCH  | `/info`   | Update profile info or add an address | ✅ Yes (Bearer) |
 | PATCH  | `/update`   | Update profile info or add an address | ✅ Yes (Bearer) |
 
 ---
