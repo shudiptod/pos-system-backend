@@ -1,7 +1,7 @@
 import { Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm";
+import { eq,desc } from "drizzle-orm";
 import { db } from "../db";
 import {
   admins,
@@ -9,6 +9,7 @@ import {
   CreateAdminInput,
   UserRole,
 } from "../models/admin.model";
+import { customers } from "../models/customer.model";
 import { AuthRequest } from "../middleware/auth";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
@@ -42,7 +43,7 @@ export const loginAdmin = async (req: AuthRequest, res: Response) => {
       { expiresIn: JWT_EXPIRES_IN }
     );
 
-    res.json({ success: true, message: "Logged in successfully", token });
+    res.json({ success: true, message: "Logged in successfully", token, id: admin.id , email: admin.email,role: admin.role });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
@@ -129,5 +130,86 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
     res.json({ success: true, message: "Admin updated successfully", admin: safeAdmin });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+
+
+
+
+
+export const getCustomers = async (req: Request, res: Response) => {
+  try {
+    // Select specific fields to avoid sending passwordHash
+    const allCustomers = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        email: customers.email,
+        phone: customers.phone,
+        avatarUrl: customers.avatarUrl,
+        isBanned: customers.isBanned,
+        createdAt: customers.createdAt,
+      })
+      .from(customers)
+      .orderBy(desc(customers.createdAt)); // Newest first
+
+    return res.status(200).json({
+      success: true,
+      data: allCustomers,
+    });
+  } catch (err: any) {
+    console.error("Get Customers Error:", err);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal server error" 
+    });
+  }
+};
+
+export const getCustomer = async (req: import("express").Request, res: Response) => {
+  try {
+    const { id } = req?.params;
+
+    if (!id) {
+        return res.status(400).json({ 
+            success: false, 
+            message: "Customer ID is required" 
+        });
+    }
+
+    // Fetch single customer
+    const [customer] = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        email: customers.email,
+        phone: customers.phone,
+        avatarUrl: customers.avatarUrl,
+        isBanned: customers.isBanned,
+        notes: customers.notes, // Maybe only admins should see notes?
+        createdAt: customers.createdAt,
+      })
+      .from(customers)
+      .where(eq(customers.id, id))
+      .limit(1);
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: customer,
+    });
+  } catch (err: any) {
+    console.error("Get Customer Error:", err);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal server error" 
+    });
   }
 };
