@@ -1,83 +1,137 @@
 import { Request, Response } from "express";
 import { db } from "../db";
-import { eq, and, ilike, gte, lte, desc, asc, sql } from "drizzle-orm";
+import { eq, and, ilike, gte, lte, desc, asc, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { AuthRequest } from "../middleware/auth"; // Assuming you have this
+import { AuthRequest } from "../middleware/auth";
 
-// Import Models
+// Models
 import { products, createProductSchema } from "../models/product.model";
 import { categories } from "../models/category.model";
 import { productVariants, createVariantSchema } from "../models/productVariant.model";
 
-// --- COMPOSITE SCHEMA FOR API REQUEST ---
-// We extend the base product schema to expect an array of variants
-const createProductWithVariantsSchema = createProductSchema.extend({
-  variants: z.array(createVariantSchema).min(1, "At least one variant is required"),
+// ---------------------------------------------------------
+// 1. CREATE PRODUCT (Transaction: Parent + Variants)
+// ---------------------------------------------------------
+
+// Schema that accepts either explicit 'variants' OR flat fields (for single products)
+const incomingPayloadSchema = createProductSchema.extend({
+  // Option A: Explicit Variants Array
+  variants: z.array(createVariantSchema).optional(),
+  
+  // Option B: Flat fields (for single products without variants)
+  barcode: z.string().optional(),
+  price: z.number().optional(),
+  stock: z.number().optional(),
+  images: z.array(z.string().url()).optional(),
+  video: z.string().url().optional(),
+  sku: z.string().optional(),
 });
 
-// ---------------------------------------------------------
-// 1. CREATE PRODUCT + VARIANTS (Transactional)
-// ---------------------------------------------------------
 export const createProduct = async (req: AuthRequest, res: Response) => {
   try {
-    // 1. Validate the combined payload
-    const parsed = createProductWithVariantsSchema.safeParse(req.body);
+    // 1. Validate Payload
+    const parsed = incomingPayloadSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ success: false, errors: parsed.error.format() });
     }
 
-    const { variants, ...productData } = parsed.data;
-    const adminId = req.user?.id; // From Auth Middleware
+    const data = parsed.data;
+    const adminId = (req as any).user?.id;
 
-    // 2. Start Transaction
+    // 2. Normalize Variants
+    // If 'variants' array exists, use it. Otherwise, create one "Default" variant from flat fields.
+    let variantsToInsert: any[] = [];
+    
+    if (data.variants && data.variants.length > 0) {
+      variantsToInsert = data.variants;
+    } else if (data.price !== undefined) {
+      // Logic for "Single Product" (No variants selected in frontend)
+      variantsToInsert = [{
+        title: "Default", // Internal name
+        price: data.price,
+        stock: data.stock || 0,
+        barcode: data.barcode,
+        images: data.images || [],
+        video: data.video,
+        sku: data.sku,
+      }];
+    } else {
+      return res.status(400).json({ success: false, message: "Product must have at least one variant or a price." });
+    }
+
+    // 3. Database Transaction
     const result = await db.transaction(async (tx) => {
-      // A. Insert Product
+      // A. Insert Parent Product (General Info)
       const [newProduct] = await tx
         .insert(products)
         .values({
-          ...productData,
+          title: data.title,
+          description: data.description,
+          categoryId: data.categoryId,
+          slug: data.slug,
+          isPublished: data.isPublished ?? true, // Default to true if not sent
           createdByAdminId: adminId,
           updatedByAdminId: adminId,
         })
         .returning();
 
-      // B. Prepare Variants (Attach the new Product ID)
-      const variantsWithProductId = variants.map((v) => ({
-        ...v,
+      // B. Attach Product ID to Variants
+      const rows = variantsToInsert.map((v) => ({
         productId: newProduct.id,
+        title: v.title,
+        price: v.price,
+        stock: v.stock,
+        barcode: v.barcode,
+        images: v.images, // Array of URLs
+        video: v.video,
+        sku: v.sku,
       }));
 
       // C. Insert Variants
-      const newVariants = await tx.insert(productVariants).values(variantsWithProductId).returning();
+      const newVariants = await tx.insert(productVariants).values(rows).returning();
 
       return { product: newProduct, variants: newVariants };
     });
 
     res.status(201).json({ success: true, data: result });
+
   } catch (error: any) {
-    console.error(error);
-    // Handle Unique Constraint errors (e.g., Duplicate Slug or SKU)
+    console.error("Create Product Error:", error);
     if (error.code === "23505") {
-      return res.status(409).json({ success: false, message: "Duplicate Slug or SKU detected" });
+      return res.status(409).json({ success: false, message: "Duplicate Slug, SKU, or Barcode detected" });
     }
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ---------------------------------------------------------
-// 2. GET SINGLE PRODUCT (With Variants)
+// 2. GET SINGLE PRODUCT (With All Variants)
 // ---------------------------------------------------------
 export const getProductById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    // Fetch Product
-    const [product] = await db.select().from(products).where(eq(products.id, id));
+    // 1. Fetch Product details
+    const [product] = await db
+      .select({
+        id: products.id,
+        title: products.title,
+        description: products.description,
+        slug: products.slug,
+        categoryId: products.categoryId,
+        categoryName: categories.name,
+      })
+      .from(products)
+      .leftJoin(categories, eq(products.categoryId, categories.id))
+      .where(eq(products.id, id));
 
     if (!product) return res.status(404).json({ message: "Product not found" });
 
-    // Fetch Associated Variants
-    const variants = await db.select().from(productVariants).where(eq(productVariants.productId, id));
+    // 2. Fetch All Variants for this product
+    const variants = await db
+      .select()
+      .from(productVariants)
+      .where(eq(productVariants.productId, id));
 
     res.json({ success: true, data: { ...product, variants } });
   } catch (error: any) {
@@ -86,11 +140,12 @@ export const getProductById = async (req: Request, res: Response) => {
 };
 
 // ---------------------------------------------------------
-// 3. GET ALL PRODUCTS (Pagination)
+// 3. GET ALL PRODUCTS (Catalog List)
 // ---------------------------------------------------------
+
+
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    // 1. Destructure query params
     const {
       category,
       search,
@@ -102,89 +157,72 @@ export const getProducts = async (req: Request, res: Response) => {
     } = req.query as {
       category?: string;
       search?: string;
-      minPrice?: string;
-      maxPrice?: string;
+      minPrice?: string; // Type as string
+      maxPrice?: string; // Type as string
       page?: string;
       limit?: string;
-      sort?: "newest" | "oldest" | "price_asc" | "price_desc" | "name_asc";
+      sort?: string;
     };
 
-    // 2. Pagination Calculations
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit, 10) || 12), 100);
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.min(Math.max(1, Number(limit)), 100);
     const offset = (pageNum - 1) * limitNum;
 
-    // 3. Build WHERE Conditions
-    const conditions = [eq(products.isPublished, true)];
+    // --- Build Conditions ---
+    const whereConditions = [eq(products.isPublished, true)];
 
-    // FILTER BY CATEGORY SLUG
-    // If a category slug is provided, we filter the JOINED table 'categories'
-    if (category) {
-      conditions.push(eq(categories.slug, category));
-    }
+    if (category) whereConditions.push(eq(categories.slug, category));
+    if (search) whereConditions.push(ilike(products.title, `%${search}%`));
+    
+    // FIX: Remove Number() wrapper. 
+    // Drizzle 'decimal' columns expect string inputs for comparison.
+    if (minPrice) whereConditions.push(gte(productVariants.price, minPrice));
+    if (maxPrice) whereConditions.push(lte(productVariants.price, maxPrice));
 
-    if (search) {
-      conditions.push(ilike(products.title, `%${search}%`));
-    }
-
-    if (minPrice) {
-      conditions.push(gte(products.basePrice, parseInt(minPrice)));
-    }
-
-    if (maxPrice) {
-      conditions.push(lte(products.basePrice, parseInt(maxPrice)));
-    }
-
-    // 4. Sorting Logic
+    // --- Sorting Strategy ---
     let orderByClause: any = desc(products.createdAt);
-    switch (sort) {
-      case "price_asc":
-        orderByClause = asc(products.basePrice);
-        break;
-      case "price_desc":
-        orderByClause = desc(products.basePrice);
-        break;
-      case "name_asc":
-        orderByClause = asc(products.title);
-        break;
-      case "oldest":
-        orderByClause = asc(products.createdAt);
-        break;
-      default:
-        orderByClause = desc(products.createdAt);
-        break;
-    }
+    
+    // Logic: Sort by the minimum price available for that product
+    if (sort === "price_asc") orderByClause = asc(sql`min(${productVariants.price})`);
+    if (sort === "price_desc") orderByClause = desc(sql`min(${productVariants.price})`);
+    if (sort === "name_asc") orderByClause = asc(products.title);
+    if (sort === "oldest") orderByClause = asc(products.createdAt);
 
-    // 5. Execute Queries
+    // --- EXECUTE QUERY ---
     const [data, totalCountResult] = await Promise.all([
       db
         .select({
           id: products.id,
           title: products.title,
           slug: products.slug,
-          basePrice: products.basePrice,
-          images: products.images,
-          categoryId: products.categoryId,
-          createdAt: products.createdAt,
           categoryName: categories.name,
           categorySlug: categories.slug,
+          createdAt: products.createdAt,
+          // Aggregates
+          minPrice: sql<number>`min(${productVariants.price})`, 
+          maxPrice: sql<number>`max(${productVariants.price})`, 
+          stock: sql<number>`sum(${productVariants.stock})`,    
+          thumbnail: sql<string>`(array_agg(${productVariants.images}))[1][1]`, 
         })
         .from(products)
         .leftJoin(categories, eq(products.categoryId, categories.id))
-        .where(and(...conditions))
+        .leftJoin(productVariants, eq(products.id, productVariants.productId))
+        .where(and(...whereConditions))
+        .groupBy(products.id, categories.id, categories.name, categories.slug) 
         .orderBy(orderByClause)
         .limit(limitNum)
         .offset(offset),
 
+      // Count Query
       db
-        .select({ count: sql<number>`count(*)` })
+        .select({ count: sql<number>`count(distinct ${products.id})` })
         .from(products)
-        .leftJoin(categories, eq(products.categoryId, categories.id)) // <--- ADDED THIS
-        .where(and(...conditions)),
+        .leftJoin(categories, eq(products.categoryId, categories.id))
+        .leftJoin(productVariants, eq(products.id, productVariants.productId))
+        .where(and(...whereConditions)),
     ]);
 
     const total = Number(totalCountResult[0]?.count || 0);
-    const totalPages = Math.ceil(total / limitNum);
 
     res.json({
       success: true,
@@ -193,11 +231,10 @@ export const getProducts = async (req: Request, res: Response) => {
         page: pageNum,
         limit: limitNum,
         total,
-        totalPages,
-        hasNext: pageNum < totalPages,
-        hasPrev: pageNum > 1,
+        totalPages: Math.ceil(total / limitNum),
       },
     });
+
   } catch (error: any) {
     console.error("Get Products Error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch products" });

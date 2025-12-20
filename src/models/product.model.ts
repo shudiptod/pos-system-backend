@@ -1,30 +1,38 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
+
+
+
+
+import { pgTable, uuid, text, boolean, timestamp } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { admins } from './admin.model';
 import { categories } from './category.model';
 
+// PARENT PRODUCT TABLE
 export const products = pgTable('products', {
   id: uuid('id').defaultRandom().primaryKey(),
-  title: text('title').notNull(),
+  
+  title: text('title').notNull(),         // e.g. "UZ-RB18"
+  slug: text('slug').notNull().unique(),  // e.g. "uz-rb18"
   description: text('description'),
+  
   categoryId: uuid('category_id').references(() => categories.id),
+  
+  // Admin Audit Fields
   createdByAdminId: uuid('created_by_admin_id').references(() => admins.id),
   updatedByAdminId: uuid('updated_by_admin_id').references(() => admins.id),
-  slug: text('slug').notNull().unique(),
-  basePrice: integer('base_price').notNull(),
-  images: text('images').array(),
-  isPublished: boolean('is_published').default(false),
+
+  isPublished: boolean('is_published').default(true),
+  
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// ZOD SCHEMAS (Validation)
 export const createProductSchema = z.object({
-  title: z.string().min(3),
+  title: z.string().min(3, "Title must be at least 3 chars"),
   description: z.string().optional(),
-  categoryId: z.string().uuid(),
-  slug: z.string().regex(/^[a-z0-9-]+$/),
-  basePrice: z.number().int().positive(),
-  images: z.array(z.string().url()),
+  categoryId: z.string().uuid("Invalid Category ID"),
+  slug: z.string().regex(/^[a-z0-9-]+$/, "Slug must be lowercase-kebab-case"),
   isPublished: z.boolean().optional(),
 });
 

@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { registerCustomerSchema, updateCustomerSchema, customers, addresses } from "../models/customer.model";
 import { db } from "../db";
 import bcrypt from "bcrypt";
-import { eq, ne, and, or } from "drizzle-orm";
+import { eq, ne, and, or,desc } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import { AuthRequest } from "../middleware/customerAuth";
 
@@ -134,6 +134,7 @@ export const loginUser = async (req: Request, res: Response) => {
 // ==========================================
 // 3. GET CUSTOMER INFO (New)
 // ==========================================
+
 export const getCustomerInfo = async (req: AuthRequest, res: Response) => {
   try {
     // 1. Get ID from the authenticated user
@@ -143,28 +144,45 @@ export const getCustomerInfo = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    // 2. Fetch customer details (exclude passwordHash)
-    const [customer] = await db
-      .select({
-        id: customers.id,
-        name: customers.name,
-        email: customers.email,
-        phone: customers.phone,
-        avatarUrl: customers.avatarUrl,
-        isBanned: customers.isBanned,
-        createdAt: customers.createdAt,
-      })
-      .from(customers)
-      .where(eq(customers.id, userId))
-      .limit(1);
+    // 2. Fetch Customer & Addresses in parallel for performance
+    const [customerResult, addressResult] = await Promise.all([
+      // Fetch Profile (Exclude password)
+      db
+        .select({
+          id: customers.id,
+          name: customers.name,
+          email: customers.email,
+          phone: customers.phone,
+          avatarUrl: customers.avatarUrl,
+          isBanned: customers.isBanned,
+          createdAt: customers.createdAt,
+        })
+        .from(customers)
+        .where(eq(customers.id, userId))
+        .limit(1),
+
+      // Fetch All Addresses for this user
+      db
+        .select()
+        .from(addresses)
+        .where(eq(addresses.customerId, userId))
+        // Optional: Sort so Default address comes first
+        .orderBy(desc(addresses.isDefault)),
+    ]);
+
+    const customer = customerResult[0];
 
     if (!customer) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // 3. Combine data and return
     return res.status(200).json({
       success: true,
-      user: customer,
+      user: {
+        ...customer,
+        addresses: addressResult, // Array of address objects (empty [] if none)
+      },
     });
   } catch (err) {
     console.error("Get Info Error:", err);

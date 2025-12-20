@@ -50,7 +50,7 @@ export const getCart = async (req: Request, res: Response) => {
 
     // 1. AUTO-CLEANUP: Remove items where VARIANT stock is 0
     // We filter by variants having stock <= 0
-    const outOfStockVariants = db.select({ id: productVariants.id }).from(productVariants).where(lte(productVariants.stock, 0)); // Check VARIANT stock
+    const outOfStockVariants = db.select({ id: productVariants.id }).from(productVariants).where(lte(productVariants.stock, 0)); 
 
     await db.delete(cartItems).where(and(eq(cartItems.cartId, cartId), inArray(cartItems.variantId, outOfStockVariants)));
 
@@ -60,14 +60,10 @@ export const getCart = async (req: Request, res: Response) => {
         id: cartItems.id,
         productId: cartItems.productId,
         variantId: cartItems.variantId,
-
-        // Product Details
         name: products.title,
-        image: products.images,
-
-        // Variant Details (The real source of truth for price/stock)
-        variantName: productVariants.title, // e.g., "Size: M"
-        price: sql`COALESCE(${productVariants.price}, ${products.basePrice})`, // Use variant price, fallback to base
+        image: productVariants.images, 
+        variantName: productVariants.title,
+        price: productVariants.price, 
         stock: productVariants.stock,
 
         quantity: cartItems.quantity,
@@ -89,7 +85,7 @@ export const getCart = async (req: Request, res: Response) => {
 
 export const addToCart = async (req: Request, res: Response) => {
   try {
-    // 1. ZOD PARSE (Now includes variantId)
+    // 1. ZOD PARSE 
     const { productId, variantId, quantity } = addToCartSchema.parse(req.body);
 
     const cartId = await getActiveCartId(req, res);
@@ -99,9 +95,6 @@ export const addToCart = async (req: Request, res: Response) => {
 
     if (!variant) return res.status(404).json({ error: "Variant not found" });
 
-    // Optional: Validate product ID matches variant
-    // if (variant.productId !== productId) ...
-
     // 3. CHECK EXISTING ITEM
     const [existingItem] = await db
       .select()
@@ -109,12 +102,11 @@ export const addToCart = async (req: Request, res: Response) => {
       .where(
         and(
           eq(cartItems.cartId, cartId),
-          eq(cartItems.variantId, variantId) // Check by Variant ID now
+          eq(cartItems.variantId, variantId) 
         )
       );
 
     const currentQty = existingItem ? existingItem.quantity : 0;
-
     const availableStock = variant.stock ?? 0;
 
     if (currentQty + quantity > availableStock) {
@@ -167,14 +159,12 @@ export const updateCartItem = async (req: Request, res: Response) => {
     res.json({ success: true, message: "Updated" });
   } catch (error) {
     if (error instanceof ZodError) {
-      // FIX: Use .issues instead of .errors
       return res.status(400).json({ error: error.issues[0].message });
     }
     res.status(500).json({ error: "Update failed" });
   }
 };
 
-// removeCartItem remains exactly the same
 export const removeCartItem = async (req: Request, res: Response) => {
   try {
     const { itemId } = req.params;

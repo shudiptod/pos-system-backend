@@ -64,6 +64,20 @@
       "when": 1765120068646,
       "tag": "0008_nice_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1766252124501,
+      "tag": "0009_calm_firelord",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1766253684341,
+      "tag": "0010_typical_aaron_stack",
+      "breakpoints": true
     }
   ]
 }
