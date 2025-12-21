@@ -17,7 +17,7 @@ import { productVariants, createVariantSchema } from "../models/productVariant.m
 const incomingPayloadSchema = createProductSchema.extend({
   // Option A: Explicit Variants Array
   variants: z.array(createVariantSchema).optional(),
-  
+
   // Option B: Flat fields (for single products without variants)
   barcode: z.string().optional(),
   price: z.number().optional(),
@@ -41,7 +41,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
     // 2. Normalize Variants
     // If 'variants' array exists, use it. Otherwise, create one "Default" variant from flat fields.
     let variantsToInsert: any[] = [];
-    
+
     if (data.variants && data.variants.length > 0) {
       variantsToInsert = data.variants;
     } else if (data.price !== undefined) {
@@ -173,7 +173,7 @@ export const getProducts = async (req: Request, res: Response) => {
 
     if (category) whereConditions.push(eq(categories.slug, category));
     if (search) whereConditions.push(ilike(products.title, `%${search}%`));
-    
+
     // FIX: Remove Number() wrapper. 
     // Drizzle 'decimal' columns expect string inputs for comparison.
     if (minPrice) whereConditions.push(gte(productVariants.price, minPrice));
@@ -181,7 +181,7 @@ export const getProducts = async (req: Request, res: Response) => {
 
     // --- Sorting Strategy ---
     let orderByClause: any = desc(products.createdAt);
-    
+
     // Logic: Sort by the minimum price available for that product
     if (sort === "price_asc") orderByClause = asc(sql`min(${productVariants.price})`);
     if (sort === "price_desc") orderByClause = desc(sql`min(${productVariants.price})`);
@@ -199,16 +199,16 @@ export const getProducts = async (req: Request, res: Response) => {
           categorySlug: categories.slug,
           createdAt: products.createdAt,
           // Aggregates
-          minPrice: sql<number>`min(${productVariants.price})`, 
-          maxPrice: sql<number>`max(${productVariants.price})`, 
-          stock: sql<number>`sum(${productVariants.stock})`,    
-          thumbnail: sql<string>`(array_agg(${productVariants.images}))[1][1]`, 
+          minPrice: sql<number>`min(${productVariants.price})`,
+          maxPrice: sql<number>`max(${productVariants.price})`,
+          stock: sql<number>`sum(${productVariants.stock})`,
+          thumbnail: sql<string>`(array_agg(${productVariants.images}))[1][1]`,
         })
         .from(products)
         .leftJoin(categories, eq(products.categoryId, categories.id))
         .leftJoin(productVariants, eq(products.id, productVariants.productId))
         .where(and(...whereConditions))
-        .groupBy(products.id, categories.id, categories.name, categories.slug) 
+        .groupBy(products.id, categories.id, categories.name, categories.slug)
         .orderBy(orderByClause)
         .limit(limitNum)
         .offset(offset),
@@ -238,5 +238,42 @@ export const getProducts = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Get Products Error:", error);
     res.status(500).json({ success: false, message: "Failed to fetch products" });
+  }
+};
+
+
+
+// ---------------------------------------------------------
+// 4. GET SINGLE PRODUCT by slug (With All Variants)
+// ---------------------------------------------------------
+export const getProductBySlug = async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+
+    // 1. Fetch Product details
+    const [product] = await db
+      .select({
+        id: products.id,
+        title: products.title,
+        description: products.description,
+        slug: products.slug,
+        categoryId: products.categoryId,
+        categoryName: categories.name,
+      })
+      .from(products)
+      .leftJoin(categories, eq(products.categoryId, categories.id))
+      .where(eq(products.slug, slug));
+
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    // 2. Fetch All Variants for this product
+    const variants = await db
+      .select()
+      .from(productVariants)
+      .where(eq(productVariants.productId, product.id));
+
+    res.json({ success: true, data: { ...product, variants } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
