@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import { db } from "../db";
 import { categories, createCategorySchema } from "../models/category.model";
-import { eq } from "drizzle-orm";
+import { products } from "../models/product.model";
+import { productVariants } from "../models/productVariant.model";
+import { eq, inArray, min, max } from "drizzle-orm";
 
 // --- CREATE CATEGORY ---
 export const createCategory = async (req: Request, res: Response) => {
@@ -39,7 +41,7 @@ export const getCategoryBySlug = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "Slug is required" });
     }
 
-    // 1. Fetch the Target Category
+    // 1. Fetch Current Category
     const [currentCategory] = await db
       .select()
       .from(categories)
@@ -50,18 +52,18 @@ export const getCategoryBySlug = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Category not found" });
     }
 
-    // 2. Fetch Direct Children
+    // 2. Fetch Direct Children (Sub-categories)
     const children = await db
       .select()
       .from(categories)
       .where(eq(categories.parentId, currentCategory.id));
 
-    // 3. Fetch Ancestors (The JS Loop)
+    // 3. Fetch Ancestors (Breadcrumbs)
+    // We walk up the tree: Current -> Parent -> Grandparent
     const ancestors = [];
     let currentParentId = currentCategory.parentId;
 
     while (currentParentId) {
-      // Fetch the parent category
       const [parent] = await db
         .select()
         .from(categories)
@@ -69,24 +71,43 @@ export const getCategoryBySlug = async (req: Request, res: Response) => {
         .limit(1);
 
       if (parent) {
-        // Add to the START of the array to keep order: Root -> Grandparent -> Parent
+        // Add to the START of the array to maintain order: Root -> Parent
         ancestors.unshift(parent);
-
-        // Move up the tree
         currentParentId = parent.parentId;
       } else {
-        // If parentId exists but record is missing (broken data), stop.
         break;
       }
     }
 
-    // 4. Return Combined Data
+    // 4. Calculate Price Range (Min/Max)
+    // We want the price range for the current category AND its sub-categories.
+    const categoryIdsToCheck = [
+      currentCategory.id,
+      ...children.map(c => c.id)
+    ];
+
+    const [priceStats] = await db
+      .select({
+        minPrice: min(productVariants.price),
+        maxPrice: max(productVariants.price)
+      })
+      .from(productVariants)
+      // Join Variants -> Products to filter by Category
+      .innerJoin(products, eq(productVariants.productId, products.id))
+      .where(inArray(products.categoryId, categoryIdsToCheck));
+
+    // 5. Construct Final Response
     res.json({
       success: true,
       data: {
         ...currentCategory,
         ancestors: ancestors, // [Grandparent, Parent]
-        children: children    // [Child1, Child2]
+        children: children,   // [Child1, Child2]
+
+        // Price stats (Default to 0 if no products exist)
+        // Note: Drizzle/PG returns aggregations as strings to preserve precision
+        minPrice: priceStats?.minPrice || 0,
+        maxPrice: priceStats?.maxPrice || 0,
       }
     });
 
