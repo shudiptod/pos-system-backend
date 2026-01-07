@@ -4,7 +4,7 @@ import { categories, createCategorySchema } from "../models/category.model";
 import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
 import { eq, inArray, min, max } from "drizzle-orm";
-import { uploadImageToSupabase } from "@/lib/supabase";
+import { uploadImageToSupabase } from "../lib/supabase";
 
 // --- CREATE CATEGORY ---
 export const createCategory = async (req: Request, res: Response) => {
