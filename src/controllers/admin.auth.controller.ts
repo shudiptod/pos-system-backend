@@ -1,7 +1,7 @@
 import { Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { eq,desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { db } from "../db";
 import {
   admins,
@@ -22,18 +22,18 @@ export const loginAdmin = async (req: AuthRequest, res: Response) => {
     if (!email || !password)
       return res.status(400).json({ success: false, message: "Email and password required" });
 
-  
+
     const [admin] = await db
       .select()
       .from(admins)
       .where(eq(admins.email, email));
-    
+
     if (!admin)
       return res.status(404).json({ success: false, message: "Admin not found" });
 
-  
+
     const isMatch = await bcrypt.compare(password, admin.passwordHash);
-    
+
     if (!isMatch)
       return res.status(401).json({ success: false, message: "Invalid credentials" });
 
@@ -43,7 +43,7 @@ export const loginAdmin = async (req: AuthRequest, res: Response) => {
       { expiresIn: JWT_EXPIRES_IN }
     );
 
-    res.json({ success: true, message: "Logged in successfully", token, id: admin.id , email: admin.email,role: admin.role });
+    res.json({ success: true, message: "Logged in successfully", token, id: admin.id, email: admin.email, role: admin.role });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
@@ -83,7 +83,7 @@ export const createAdmin = async (req: AuthRequest, res: Response) => {
       email: parsed.email,
       name: parsed.name,
       role: parsed.role,
-      passwordHash: hash, 
+      passwordHash: hash,
     }).returning();
 
     // Remove passwordHash from response for security
@@ -111,7 +111,7 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
       .select()
       .from(admins)
       .where(eq(admins.id, id));
-    
+
     if (!targetAdmin)
       return res.status(404).json({ success: false, message: "Admin not found" });
 
@@ -122,8 +122,8 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
       name: name ?? targetAdmin.name,
       role: role ?? targetAdmin.role,
     })
-    .where(eq(admins.id, id))
-    .returning();
+      .where(eq(admins.id, id))
+      .returning();
 
     const { passwordHash, ...safeAdmin } = updated;
 
@@ -134,7 +134,29 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
 };
 
 
+export const getAdminInfo = async (req: AuthRequest, res: Response) => {
+  try {
+    const adminId = req.user?.id;
+    if (!adminId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
+    const [admin] = await db
+      .select()
+      .from(admins)
+      .where(eq(admins.id, adminId));
+
+    if (!admin) {
+      return res.status(404).json({ success: false, message: "Admin not found" });
+    }
+
+    const { passwordHash, ...safeAdmin } = admin;
+
+    res.status(200).json({ success: true, data: safeAdmin });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 
 
@@ -160,9 +182,9 @@ export const getCustomers = async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("Get Customers Error:", err);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Internal server error" 
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
     });
   }
 };
@@ -172,10 +194,10 @@ export const getCustomer = async (req: import("express").Request, res: Response)
     const { id } = req?.params;
 
     if (!id) {
-        return res.status(400).json({ 
-            success: false, 
-            message: "Customer ID is required" 
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required"
+      });
     }
 
     // Fetch single customer
@@ -207,9 +229,9 @@ export const getCustomer = async (req: import("express").Request, res: Response)
     });
   } catch (err: any) {
     console.error("Get Customer Error:", err);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Internal server error" 
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
     });
   }
 };
