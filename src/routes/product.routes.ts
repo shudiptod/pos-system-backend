@@ -19,8 +19,8 @@ router.get("/categories", getCategories);
 // get single category
 router.get("/categories/:slug", getCategoryBySlug);
 
-router.post("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createProduct as any);
 
+router.post("/products", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, upload.any(), createProduct);
 router.get("/:id", getProductById);
 // get product by slug
 router.get("/slug/:slug", getProductBySlug);
