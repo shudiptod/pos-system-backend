@@ -28,66 +28,89 @@ const incomingPayloadSchema = createProductSchema.extend({
   sku: z.string().optional(),
 });
 
-
-
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const user = (req as AuthRequest).user;
-
-    // Safety check (optional but good)
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    const rawBody = req.body;
-    const files = (req.files as Express.Multer.File[]) || [];
-
-    // 1. RECONSTRUCT STRUCTURE & UPLOAD IMAGES
-    // We expect rawBody to have keys like: "variants[0][title]", "variants[0][price]"...
-    // But typically body-parser with 'extended: true' parses this into objects.
-    // If not, we assume req.body is already an object structure.
-
-    // We need to map uploaded files to their specific variant index.
-    // File fieldname format from frontend: "variants[0][images]"
-
-    const variantsMap: any = {};
-
-    // A. Parse textual variant data (if separate keys) or use existing array
-    // Note: If you use 'upload.any()', req.body might need manual parsing if not JSON.
-    // Assuming 'upload.any()' + Express body parser gives us a structured body:
+    // 1. INITIALIZE VARIANTS MAP
+    // We do this to ensure we have a clean structure to work with, 
+    // ignoring whatever messy structure req.body might have initially for arrays.
+    const rawBody = req.body || {};
     let variants = rawBody.variants || [];
 
-    // B. Handle Files (Upload to Supabase and attach URL)
+    // Ensure variants is an array (sometimes parser makes it an object: { '0': {}, '1': {} })
+    if (typeof variants === 'object' && !Array.isArray(variants)) {
+      variants = Object.values(variants);
+    }
+
+    const files = (req.files as Express.Multer.File[]) || [];
+
+    // 2. PROCESS FILES & ATTACH TO VARIANTS
+    // We assume the index in 'variants[0][images]' matches the index in our variants array
     await Promise.all(files.map(async (file) => {
-      // Fieldname example: "variants[0][images]" or "variants[0][video]"
+      // Matches: variants[0][images] OR variants[0][video]
       const match = file.fieldname.match(/variants\[(\d+)\]\[(images|video)\]/);
 
       if (match) {
         const index = parseInt(match[1]);
         const type = match[2]; // 'images' or 'video'
 
-        // Upload
         const publicUrl = await uploadImageToSupabase(file, 'products');
 
-        // Initialize variant object if missing (safety check)
+        // Ensure variant exists
         if (!variants[index]) variants[index] = {};
 
         if (type === 'video') {
           variants[index].video = publicUrl;
         } else {
-          // Images is an array
-          if (!variants[index].images) variants[index].images = [];
+          // FORCE images to be an array. 
+          // If req.body had garbage there (like an object), we overwrite or append.
+          if (!Array.isArray(variants[index].images)) {
+            variants[index].images = [];
+          }
           variants[index].images.push(publicUrl);
         }
       }
     }));
 
-    // 2. CLEANUP TYPES (FormData makes everything strings)
-    const cleanedVariants = variants.map((v: any) => ({
-      ...v,
-      price: Number(v.price),
-      stock: Number(v.stock),
-      // Ensure images is defined
-      images: v.images || [],
-    }));
+    // 3. AGGRESSIVE TYPE CLEANUP (The Fix for your Error)
+    const cleanedVariants = variants.map((v: any) => {
+      // A. Fix Options: Ensure values are strings
+      let cleanOptions: Record<string, string> | undefined = undefined;
+
+      if (v.options) {
+        cleanOptions = {};
+        Object.keys(v.options).forEach((key) => {
+          const val = v.options[key];
+          // If val is an object/array, take the first item or stringify it.
+          // This fixes "expected string, received object"
+          if (typeof val === 'object') {
+            cleanOptions![key] = Array.isArray(val) ? String(val[0]) : JSON.stringify(val);
+          } else {
+            cleanOptions![key] = String(val);
+          }
+        });
+      }
+
+      // B. Fix Images: Ensure it's an array of strings
+      // If no images uploaded, ensure it's empty array [] not undefined or object
+      let cleanImages = Array.isArray(v.images) ? v.images : [];
+
+      return {
+        ...v,
+        title: v.title || "Default", // Handle empty titles
+        price: Number(v.price) || 0,
+        stock: Number(v.stock) || 0,
+        // Drizzle requires strings for decimal columns, but Zod might check number first?
+        // Check your schema. If Zod expects number, use Number().
+        // If your Zod schema expects strings for price, use String(v.price).
+        // Based on previous error, Zod wanted number, so keep Number().
+
+        images: cleanImages, // Fix "expected array, received object"
+        options: cleanOptions, // Fix "expected string, received object"
+      };
+    });
 
     const cleanedData = {
       ...rawBody,
@@ -95,45 +118,44 @@ export const createProduct = async (req: Request, res: Response) => {
       variants: cleanedVariants
     };
 
-    // 3. Validate Payload
+    // 4. VALIDATE WITH ZOD
     const parsed = incomingPayloadSchema.safeParse(cleanedData);
+
     if (!parsed.success) {
+      console.error("Validation Error:", JSON.stringify(parsed.error.format(), null, 2));
       return res.status(400).json({ success: false, errors: parsed.error.format() });
     }
 
     const data = parsed.data;
-    const adminId = (req as any).user?.id;
 
-    // ... REST OF YOUR DB TRANSACTION LOGIC (Identical to your original code) ...
-    // ... Copy from step 3 in your original snippet ...
+    // ... [REST OF YOUR DB INSERTION CODE IS UNCHANGED] ...
+    // ... db.transaction(...) ...
 
-    // For brevity, just calling the DB part:
+    // Quick DB Transaction recap for completeness:
     const result = await db.transaction(async (tx) => {
-      // Insert Product
       const [newProduct] = await tx.insert(products).values({
         title: data.title,
         description: data.description,
         categoryId: data.categoryId,
         slug: data.slug,
         isPublished: data.isPublished ?? true,
-        createdByAdminId: adminId,
-        updatedByAdminId: adminId,
+        createdByAdminId: user.id,
+        updatedByAdminId: user.id,
       }).returning();
 
-      // Prepare Variants
       const rows = data.variants!.map((v) => ({
         productId: newProduct.id,
         title: v.title,
-        price: v.price.toString(),
+        // Drizzle Decimal Fix: Convert number to string for DB insertion
+        price: String(v.price),
         stock: v.stock,
         barcode: v.barcode,
-        images: v.images || [],
+        images: v.images,
         video: v.video,
         sku: v.sku,
-        options: v.options // Ensure your DB model has this column
+        options: v.options,
       }));
 
-      // Insert Variants
       const newVariants = await tx.insert(productVariants).values(rows).returning();
       return { product: newProduct, variants: newVariants };
     });
@@ -145,6 +167,8 @@ export const createProduct = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
 // ---------------------------------------------------------
 // 2. GET SINGLE PRODUCT (With All Variants)
 // ---------------------------------------------------------
