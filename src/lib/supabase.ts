@@ -28,7 +28,7 @@ export const createSupabaseClient = (token?: string) => {
 
 
 // --- UPDATED HELPER ---
-export const uploadImageToSupabase = async (file: Express.Multer.File, bucket: string) => {
+export const uploadImageToSupabase = async (file: Express.Multer.File, bucket = 'store-assets') => {
   try {
 
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
