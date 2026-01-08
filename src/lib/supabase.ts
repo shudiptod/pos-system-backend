@@ -5,15 +5,16 @@ dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseServiceRoleKey) {
   throw new Error('Missing Supabase URL or Anon Key in .env');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 
 export const createSupabaseClient = (token?: string) => {
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
     global: token
       ? {
         headers: {
@@ -31,6 +32,7 @@ export const uploadImageToSupabase = async (
   folder: string = 'misc' // <--- NEW PARAMETER (Defaults to 'misc')
 ) => {
   try {
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
     // 1. Create a clean unique filename
     const fileExt = file.originalname.split('.').pop();
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.${fileExt}`;
