@@ -8,7 +8,7 @@ export const uploadFile = async (req: Request, res: Response) => {
         }
 
         // Allow specifying bucket via query (e.g., ?bucket=categories)
-        const bucket = (req.query.bucket as string) || "default";
+        const bucket = (req.query.bucket as string) || "store-assets";
 
         const publicUrl = await uploadImageToSupabase(req.file, bucket);
 
