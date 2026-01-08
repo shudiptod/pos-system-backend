@@ -9,12 +9,13 @@ import cookieParser from "cookie-parser";
 import { notFound } from "./middleware/notFound";
 import { errorHandler } from "./middleware/errorHandler";
 import userAuthRoutes from "./routes/customer.auth.router";
-import { listRoutes } from "./utils/listRoutes"; 
+import { listRoutes } from "./utils/listRoutes";
 import customerRoutes from "./routes/create.customer.router";
 
-import adminRoutes from "./routes/admin.router"; 
+import adminRoutes from "./routes/admin.router";
 import productRoutes from "./routes/product.routes";
 import cartRoutes from "./routes/cart.route";
+import { uploadFile } from "./routes/upload.router";
 
 
 const app = express();
@@ -37,7 +38,7 @@ app.get("/", (req, res) => {
   res.json({
     message: "API Running – Auth System Ready!",
     routes: listRoutes(app),
-    
+
   });
 });
 
@@ -46,6 +47,7 @@ app.use("/api/auth", userAuthRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/upload", uploadFile);
 app.use(cookieParser());
 app.use("/api/cart", cartRoutes);
 app.use(notFound);
