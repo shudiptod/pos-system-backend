@@ -222,8 +222,8 @@ export const getProducts = async (req: Request, res: Response) => {
     } = req.query as {
       category?: string;
       search?: string;
-      minPrice?: string; // Type as string
-      maxPrice?: string; // Type as string
+      minPrice?: string;
+      maxPrice?: string;
       page?: string;
       limit?: string;
       sort?: string;
@@ -239,15 +239,13 @@ export const getProducts = async (req: Request, res: Response) => {
     if (category) whereConditions.push(eq(categories.slug, category));
     if (search) whereConditions.push(ilike(products.title, `%${search}%`));
 
-    // FIX: Remove Number() wrapper. 
-    // Drizzle 'decimal' columns expect string inputs for comparison.
+    // Ensure minPrice/maxPrice are handled safely (Drizzle expects strings for decimal cols)
     if (minPrice) whereConditions.push(gte(productVariants.price, minPrice));
     if (maxPrice) whereConditions.push(lte(productVariants.price, maxPrice));
 
     // --- Sorting Strategy ---
     let orderByClause: any = desc(products.createdAt);
 
-    // Logic: Sort by the minimum price available for that product
     if (sort === "price_asc") orderByClause = asc(sql`min(${productVariants.price})`);
     if (sort === "price_desc") orderByClause = desc(sql`min(${productVariants.price})`);
     if (sort === "name_asc") orderByClause = asc(products.title);
@@ -267,13 +265,23 @@ export const getProducts = async (req: Request, res: Response) => {
           minPrice: sql<number>`min(${productVariants.price})`,
           maxPrice: sql<number>`max(${productVariants.price})`,
           stock: sql<number>`sum(${productVariants.stock})`,
+          // Note: This assumes images is a text[] array. [1][1] gets the first image of the first variant.
           thumbnail: sql<string>`(array_agg(${productVariants.images}))[1][1]`,
         })
         .from(products)
         .leftJoin(categories, eq(products.categoryId, categories.id))
         .leftJoin(productVariants, eq(products.id, productVariants.productId))
         .where(and(...whereConditions))
-        .groupBy(products.id, categories.id, categories.name, categories.slug)
+        // 🔥 FIX: Add ALL non-aggregated columns here
+        .groupBy(
+          products.id,
+          products.title,      // <--- ADDED
+          products.slug,       // <--- ADDED
+          products.createdAt,  // <--- ADDED
+          categories.id,
+          categories.name,
+          categories.slug
+        )
         .orderBy(orderByClause)
         .limit(limitNum)
         .offset(offset),
@@ -302,10 +310,10 @@ export const getProducts = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Get Products Error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch products" });
+    // Return the actual error message to help debugging
+    res.status(500).json({ success: false, message: "Failed to fetch products", error: error.message });
   }
 };
-
 
 
 // ---------------------------------------------------------
