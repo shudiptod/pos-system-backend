@@ -265,19 +265,19 @@ export const getProducts = async (req: Request, res: Response) => {
           minPrice: sql<number>`min(${productVariants.price})`,
           maxPrice: sql<number>`max(${productVariants.price})`,
           stock: sql<number>`sum(${productVariants.stock})`,
-          // Note: This assumes images is a text[] array. [1][1] gets the first image of the first variant.
-          thumbnail: sql<string>`(array_agg(${productVariants.images}))[1][1]`,
+
+          // 🔥 FIXED LINE: Extract scalar string first, then aggregate
+          thumbnail: sql<string>`(array_agg(${productVariants.images}[1]))[1]`,
         })
         .from(products)
         .leftJoin(categories, eq(products.categoryId, categories.id))
         .leftJoin(productVariants, eq(products.id, productVariants.productId))
         .where(and(...whereConditions))
-        // 🔥 FIX: Add ALL non-aggregated columns here
         .groupBy(
           products.id,
-          products.title,      // <--- ADDED
-          products.slug,       // <--- ADDED
-          products.createdAt,  // <--- ADDED
+          products.title,
+          products.slug,
+          products.createdAt,
           categories.id,
           categories.name,
           categories.slug
@@ -285,7 +285,6 @@ export const getProducts = async (req: Request, res: Response) => {
         .orderBy(orderByClause)
         .limit(limitNum)
         .offset(offset),
-
       // Count Query
       db
         .select({ count: sql<number>`count(distinct ${products.id})` })
