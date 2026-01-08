@@ -41,6 +41,12 @@ export const uploadImageToSupabase = async (
     // Example: "products/12345.jpg" or "categories/999.png"
     const filePath = `${folder}/${fileName}`;
 
+    console.log("fileExt", fileExt);
+    console.log("fileName", fileName);
+    console.log("filePath", filePath);
+
+    // 2. Upload to Supabase Storage
+
     const { data, error } = await supabase.storage
       .from(bucket)
       .upload(filePath, file.buffer, {
@@ -48,13 +54,18 @@ export const uploadImageToSupabase = async (
         upsert: false
       });
 
+    console.log("error", error);
+
     if (error) throw error;
+
+    console.log("data", data);
 
     // 3. Get Public URL
     const { data: { publicUrl } } = supabase.storage
       .from(bucket)
       .getPublicUrl(filePath);
 
+    console.log("publicUrl 2", publicUrl);
     return publicUrl;
   } catch (error) {
     console.error("Supabase Upload Error:", error);
