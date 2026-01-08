@@ -1,18 +1,20 @@
-import { Router } from "express";
-import { upload } from "../middleware/upload"; // Re-use your multer middleware
-import { uploadFile } from "@/routes/upload.router";
-import { authenticateJWT, authorize } from "@/middleware/auth";
+import { Request, Response } from "express";
+import { uploadImageToSupabase } from "../lib/supabase";
 
+export const uploadFile = async (req: Request, res: Response) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "No file uploaded" });
+        }
 
-const router = Router();
+        // Allow specifying bucket via query (e.g., ?bucket=categories)
+        const bucket = (req.query.bucket as string) || "default";
 
-// POST /api/upload
-router.post(
-    "/",
-    authenticateJWT as any,
-    authorize(["ADMIN", "SUPER_ADMIN", "MANAGER"]) as any,
-    upload.single("file"), // Expect field name 'file'
-    uploadFile
-);
+        const publicUrl = await uploadImageToSupabase(req.file, bucket);
 
-export default router;
+        res.json({ success: true, url: publicUrl });
+    } catch (error: any) {
+        console.error("Upload Error:", error);
+        res.status(500).json({ success: false, message: "Upload failed" });
+    }
+};
