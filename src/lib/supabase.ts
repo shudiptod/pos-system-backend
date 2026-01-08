@@ -24,13 +24,20 @@ export const createSupabaseClient = (token?: string) => {
   });
 };
 
-// Helper to upload file
-export const uploadImageToSupabase = async (file: Express.Multer.File, bucket: string = 'images') => {
+// --- UPDATED HELPER ---
+export const uploadImageToSupabase = async (
+  file: Express.Multer.File,
+  bucket: string = 'images',
+  folder: string = 'misc' // <--- NEW PARAMETER (Defaults to 'misc')
+) => {
   try {
-    // Create a unique filename: timestamp-originalName
+    // 1. Create a clean unique filename
     const fileExt = file.originalname.split('.').pop();
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.${fileExt}`;
-    const filePath = `categories/${fileName}`;
+
+    // 2. Use the dynamic folder path
+    // Example: "products/12345.jpg" or "categories/999.png"
+    const filePath = `${folder}/${fileName}`;
 
     const { data, error } = await supabase.storage
       .from(bucket)
@@ -41,7 +48,7 @@ export const uploadImageToSupabase = async (file: Express.Multer.File, bucket: s
 
     if (error) throw error;
 
-    // Get Public URL
+    // 3. Get Public URL
     const { data: { publicUrl } } = supabase.storage
       .from(bucket)
       .getPublicUrl(filePath);
