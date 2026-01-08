@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-
+import fs from "fs";
 dotenv.config();
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -25,50 +25,42 @@ export const createSupabaseClient = (token?: string) => {
   });
 };
 
+
+
 // --- UPDATED HELPER ---
-export const uploadImageToSupabase = async (
-  file: Express.Multer.File,
-  bucket: string = 'images',
-  folder: string = 'misc' // <--- NEW PARAMETER (Defaults to 'misc')
-) => {
+export const uploadImageToSupabase = async (file: Express.Multer.File, bucket: string) => {
   try {
+
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-    // 1. Create a clean unique filename
-    const fileExt = file.originalname.split('.').pop();
-    const fileName = `${Date.now()}-${Math.round(Math.random() * 1E9)}.${fileExt}`;
+    // CHANGE 2: Create a Read Stream from the file path (Low Memory usage)
+    const fileStream = fs.createReadStream(file.path);
 
-    // 2. Use the dynamic folder path
-    // Example: "products/12345.jpg" or "categories/999.png"
-    const filePath = `${folder}/${fileName}`;
-
-    console.log("fileExt", fileExt);
-    console.log("fileName", fileName);
-    console.log("filePath", filePath);
-
-    // 2. Upload to Supabase Storage
-
-    const { data, error } = await supabase.storage
+    const { data, error } = await supabase
+      .storage
       .from(bucket)
-      .upload(filePath, file.buffer, {
+      .upload(file.originalname, fileStream, {
         contentType: file.mimetype,
-        upsert: false
+        duplex: 'half', // Important for streaming in Node.js environments
+        upsert: true,
       });
 
-    console.log("error", error);
+    if (error) {
+      throw error;
+    }
 
-    if (error) throw error;
+    // CHANGE 3: Clean up! Delete the temp file from disk
+    fs.unlink(file.path, (err) => {
+      if (err) console.error("Error deleting temp file:", err);
+    });
 
-    console.log("data", data);
+    const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+    return publicUrlData.publicUrl;
 
-    // 3. Get Public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
-
-    console.log("publicUrl 2", publicUrl);
-    return publicUrl;
   } catch (error) {
-    console.error("Supabase Upload Error:", error);
-    throw new Error("Image upload failed");
+    // Ensure we delete the file even if upload fails
+    if (file?.path) {
+      fs.unlink(file.path, () => { });
+    }
+    throw error;
   }
 };
