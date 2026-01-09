@@ -6,15 +6,9 @@ export const uploadFile = async (req: Request, res: Response) => {
         if (!req.file) {
             return res.status(400).json({ success: false, message: "No file uploaded" });
         }
+        const folder = req.query.folder as string | "default";
 
-        // Allow specifying bucket via query (e.g., ?bucket=categories)
-        const bucket = (req.query.bucket as string) || "store-assets";
-
-        console.log("bucket", bucket);
-
-        const publicUrl = await uploadImageToSupabase(req.file, bucket);
-
-        console.log("publicUrl", publicUrl);
+        const publicUrl = await uploadImageToSupabase(req.file, folder);
 
         res.json({ success: true, url: publicUrl });
     } catch (error: any) {

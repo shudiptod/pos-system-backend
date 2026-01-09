@@ -28,7 +28,7 @@ export const createSupabaseClient = (token?: string) => {
 
 
 // --- UPDATED HELPER ---
-export const uploadImageToSupabase = async (file: Express.Multer.File, bucket = 'store-assets') => {
+export const uploadImageToSupabase = async (file: Express.Multer.File, folder = "default") => {
   try {
 
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
@@ -37,8 +37,8 @@ export const uploadImageToSupabase = async (file: Express.Multer.File, bucket = 
 
     const { data, error } = await supabase
       .storage
-      .from(bucket)
-      .upload(file.originalname, fileStream, {
+      .from("store-assets")
+      .upload(`${folder}/${file.originalname}`, fileStream, {
         contentType: file.mimetype,
         duplex: 'half', // Important for streaming in Node.js environments
         upsert: true,
@@ -53,7 +53,7 @@ export const uploadImageToSupabase = async (file: Express.Multer.File, bucket = 
       if (err) console.error("Error deleting temp file:", err);
     });
 
-    const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+    const { data: publicUrlData } = supabase.storage.from("store-assets").getPublicUrl(data.path);
     return publicUrlData.publicUrl;
 
   } catch (error) {
