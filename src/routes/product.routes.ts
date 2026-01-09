@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
 import { createCategory, getCategories, getCategoryBySlug } from "../controllers/category.controller";
-import { createProduct, getProductById, getProductBySlug, getProducts } from "../controllers/product.controller";
+import { createProduct, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
 import { updateVariant } from "../controllers/variant.controller";
 
 const router = Router();
@@ -11,21 +11,26 @@ router.post(
     "/categories",
     authenticateJWT as any,
     authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    createCategory
+    createCategory as any
 );
 router.get("/categories", getCategories);
 // get single category
 router.get("/categories/:slug", getCategoryBySlug);
 
 
-router.post("/products", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createProduct);
+router.post("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createProduct as any);
 
 router.get("/:id", getProductById);
 // get product by slug
 router.get("/slug/:slug", getProductBySlug);
 
+// update product 
+router.patch("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, updateProduct as any);
 
+// update product variant
 router.patch("/variants/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, updateVariant);
+
+// get all products
 router.get("/", getProducts as any);
 
 export default router;

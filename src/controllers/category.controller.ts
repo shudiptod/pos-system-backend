@@ -4,11 +4,15 @@ import { categories, createCategorySchema } from "../models/category.model";
 import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
 import { eq, inArray, min, max } from "drizzle-orm";
+import { AuthRequest } from "@/middleware/auth";
+
 
 // --- CREATE CATEGORY ---
 
-export const createCategory = async (req: Request, res: Response) => {
+export const createCategory = async (req: AuthRequest, res: Response) => {
   try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
     // 1. Prepare Data
     // We assume the frontend has already uploaded the image and sent us the URL.
     const rawBody = {

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { db } from "../db";
-import { eq, and, ilike, gte, lte, desc, asc, sql, inArray } from "drizzle-orm";
+import { eq, and, ilike, gte, lte, desc, asc, sql, inArray, or, not } from "drizzle-orm";
 import { z } from "zod";
 import { AuthRequest } from "../middleware/auth";
 
@@ -9,6 +9,7 @@ import { products, createProductSchema } from "../models/product.model";
 import { categories } from "../models/category.model";
 import { productVariants, createVariantSchema } from "../models/productVariant.model";
 import { uploadImageToSupabase } from "../lib/supabase";
+import { generateSlug } from "../utils/slugify";
 
 // ---------------------------------------------------------
 // 1. CREATE PRODUCT (Transaction: Parent + Variants)
@@ -28,9 +29,9 @@ const incomingPayloadSchema = createProductSchema.extend({
   sku: z.string().optional(),
 });
 
-export const createProduct = async (req: Request, res: Response) => {
+export const createProduct = async (req: AuthRequest, res: Response) => {
   try {
-    const user = (req as AuthRequest).user;
+    const user = req.user;
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
 
@@ -310,3 +311,45 @@ export const getProductBySlug = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+// ---------------------------------------------------------
+// 5. UPDATE PRODUCT
+// ---------------------------------------------------------
+
+export const updateProduct = async (req: AuthRequest, res: Response) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ message: "Unauthorized" });
+  // Implementation for updating a product goes here
+  try {
+    const { id } = req.params;
+    const { title, description, categoryId } = req.body;
+
+    // check if new title or slug already exists for other products
+    const existingProduct = await db
+      .select()
+      .from(products)
+      .where(
+        and(
+          not(eq(products.id, id)),
+          or(eq(products.title, title), eq(products.slug, generateSlug(title)))
+        )
+      )
+      .limit(1);
+
+    if (existingProduct.length > 0) {
+      return res.status(400).json({ message: "Product title already exists" });
+    }
+
+    const [product] = await db
+      .update(products)
+      .set({ title, description, categoryId, slug: generateSlug(title), updatedByAdminId: user.id })
+      .where(eq(products.id, id))
+      .returning();
+
+    if (!product) return res.status(404).json({ message: "Product not found" });
+    res.json({ success: true, data: product });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
