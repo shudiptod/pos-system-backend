@@ -4,37 +4,45 @@ import { categories, createCategorySchema } from "../models/category.model";
 import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
 import { eq, inArray, min, max } from "drizzle-orm";
-import { uploadImageToSupabase } from "../lib/supabase";
 
 // --- CREATE CATEGORY ---
+
 export const createCategory = async (req: Request, res: Response) => {
   try {
-    let imagePath = null;
-
-    // 1. Check if a file was uploaded
-    if (req.file) {
-      imagePath = await uploadImageToSupabase(req.file);
-    } else if (req.body.image) {
-      // Handle case where user sends a string URL instead of a file
-      imagePath = req.body.image;
-    }
-
+    // 1. Prepare Data
+    // We assume the frontend has already uploaded the image and sent us the URL.
     const rawBody = {
       ...req.body,
-      image: imagePath,
-      isActive: req.body.isActive === 'true' || req.body.isActive === true,
+      // Map 'image' to 'imagePath' to match your DB schema, just in case frontend sends generic 'image' key
+      imagePath: req.body.imagePath || req.body.image,
+
+      // Safety check: ensure boolean is treated correctly
+      isActive: req.body.isActive === true || req.body.isActive === 'true',
     };
 
-
+    // 2. Validate with Zod
     const parsed = createCategorySchema.safeParse(rawBody);
-    if (!parsed.success) return res.status(400).json({ errors: parsed.error.format() });
 
+    if (!parsed.success) {
+      return res.status(400).json({ errors: parsed.error.format() });
+    }
 
-    const [newCategory] = await db.insert(categories).values(parsed.data).returning();
+    // 3. Insert into DB
+    const [newCategory] = await db
+      .insert(categories)
+      .values(parsed.data)
+      .returning();
 
     res.status(201).json({ success: true, category: newCategory });
+
   } catch (error: any) {
-    console.error(error);
+    console.error("Create Category Error:", error);
+
+    // Postgres Error Code 23505 = Unique Violation (Duplicate Slug)
+    if (error.code === '23505') {
+      return res.status(409).json({ success: false, message: "A category with this slug already exists." });
+    }
+
     res.status(500).json({ success: false, message: error.message });
   }
 };

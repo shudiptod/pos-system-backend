@@ -33,92 +33,54 @@ export const createProduct = async (req: Request, res: Response) => {
     const user = (req as AuthRequest).user;
     if (!user) return res.status(401).json({ message: "Unauthorized" });
 
-    // 1. INITIALIZE VARIANTS MAP
-    // We do this to ensure we have a clean structure to work with, 
-    // ignoring whatever messy structure req.body might have initially for arrays.
+
     const rawBody = req.body || {};
     let variants = rawBody.variants || [];
 
-    // Ensure variants is an array (sometimes parser makes it an object: { '0': {}, '1': {} })
-    if (typeof variants === 'object' && !Array.isArray(variants)) {
-      variants = Object.values(variants);
+    // Safety check if variants is undefined
+    if (!Array.isArray(variants)) {
+      variants = [];
     }
 
-    const files = (req.files as Express.Multer.File[]) || [];
 
-    // 2. PROCESS FILES & ATTACH TO VARIANTS
-    // We assume the index in 'variants[0][images]' matches the index in our variants array
-    await Promise.all(files.map(async (file) => {
-      // Matches: variants[0][images] OR variants[0][video]
-      const match = file.fieldname.match(/variants\[(\d+)\]\[(images|video)\]/);
-
-      if (match) {
-        const index = parseInt(match[1]);
-        const type = match[2]; // 'images' or 'video'
-
-        const publicUrl = await uploadImageToSupabase(file, 'products');
-
-        // Ensure variant exists
-        if (!variants[index]) variants[index] = {};
-
-        if (type === 'video') {
-          variants[index].video = publicUrl;
-        } else {
-          // FORCE images to be an array. 
-          // If req.body had garbage there (like an object), we overwrite or append.
-          if (!Array.isArray(variants[index].images)) {
-            variants[index].images = [];
-          }
-          variants[index].images.push(publicUrl);
-        }
-      }
-    }));
-
-    // 3. AGGRESSIVE TYPE CLEANUP (The Fix for your Error)
     const cleanedVariants = variants.map((v: any) => {
-      // A. Fix Options: Ensure values are strings
+
       let cleanOptions: Record<string, string> | undefined = undefined;
 
-      if (v.options) {
+      if (v.options && typeof v.options === 'object') {
         cleanOptions = {};
         Object.keys(v.options).forEach((key) => {
           const val = v.options[key];
-          // If val is an object/array, take the first item or stringify it.
-          // This fixes "expected string, received object"
-          if (typeof val === 'object') {
-            cleanOptions![key] = Array.isArray(val) ? String(val[0]) : JSON.stringify(val);
-          } else {
-            cleanOptions![key] = String(val);
-          }
+
+          cleanOptions![key] = typeof val === 'string' ? val : String(val);
         });
       }
 
-      // B. Fix Images: Ensure it's an array of strings
-      // If no images uploaded, ensure it's empty array [] not undefined or object
-      let cleanImages = Array.isArray(v.images) ? v.images : [];
+      let cleanImages: string[] = [];
+      if (Array.isArray(v.images)) {
+        cleanImages = v.images.filter((img: any) => typeof img === 'string');
+      }
 
       return {
         ...v,
-        title: v.title || "Default", // Handle empty titles
+        title: v.title || "Default",
         price: Number(v.price) || 0,
         stock: Number(v.stock) || 0,
-        // Drizzle requires strings for decimal columns, but Zod might check number first?
-        // Check your schema. If Zod expects number, use Number().
-        // If your Zod schema expects strings for price, use String(v.price).
-        // Based on previous error, Zod wanted number, so keep Number().
-
-        images: cleanImages, // Fix "expected array, received object"
-        options: cleanOptions, // Fix "expected string, received object"
+        images: cleanImages,
+        video: typeof v.video === 'string' ? v.video : null,
+        options: cleanOptions,
+        sku: v.sku || null,
+        barcode: v.barcode || null
       };
     });
 
     const cleanedData = {
       ...rawBody,
-      isPublished: rawBody.isPublished === 'true' || rawBody.isPublished === true,
+      isPublished: rawBody.isPublished === true,
       variants: cleanedVariants
     };
 
-    // 4. VALIDATE WITH ZOD
+
     const parsed = incomingPayloadSchema.safeParse(cleanedData);
 
     if (!parsed.success) {
@@ -128,10 +90,7 @@ export const createProduct = async (req: Request, res: Response) => {
 
     const data = parsed.data;
 
-    // ... [REST OF YOUR DB INSERTION CODE IS UNCHANGED] ...
-    // ... db.transaction(...) ...
 
-    // Quick DB Transaction recap for completeness:
     const result = await db.transaction(async (tx) => {
       const [newProduct] = await tx.insert(products).values({
         title: data.title,
@@ -143,21 +102,24 @@ export const createProduct = async (req: Request, res: Response) => {
         updatedByAdminId: user.id,
       }).returning();
 
-      const rows = data.variants!.map((v) => ({
-        productId: newProduct.id,
-        title: v.title,
-        // Drizzle Decimal Fix: Convert number to string for DB insertion
-        price: String(v.price),
-        stock: v.stock,
-        barcode: v.barcode,
-        images: v.images,
-        video: v.video,
-        sku: v.sku,
-        options: v.options,
-      }));
+      if (data.variants && data.variants.length > 0) {
+        const rows = data.variants.map((v) => ({
+          productId: newProduct.id,
+          title: v.title,
+          price: String(v.price),
+          stock: v.stock,
+          barcode: v.barcode,
+          images: v.images,
+          video: v.video,
+          sku: v.sku,
+          options: v.options,
+        }));
 
-      const newVariants = await tx.insert(productVariants).values(rows).returning();
-      return { product: newProduct, variants: newVariants };
+        const newVariants = await tx.insert(productVariants).values(rows).returning();
+        return { product: newProduct, variants: newVariants };
+      }
+
+      return { product: newProduct, variants: [] };
     });
 
     res.status(201).json({ success: true, data: result });
@@ -167,7 +129,6 @@ export const createProduct = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // ---------------------------------------------------------
 // 2. GET SINGLE PRODUCT (With All Variants)
