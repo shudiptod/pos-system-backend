@@ -141,6 +141,22 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const getAllAdmins = async (req: AuthRequest, res: Response) => {
+  try {
+
+    const adminId = req.user?.id;
+    if (!adminId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const allAdmins = await db.select().from(admins);
+    const safeAdmins = allAdmins.map(({ passwordHash, ...admin }) => admin);
+    res.status(200).json({ success: true, data: safeAdmins });
+  }
+  catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
 
 export const getAdminInfo = async (req: AuthRequest, res: Response) => {
   try {

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loginAdmin, createAdmin, updateAdmin, getCustomers, getCustomer, getAdminInfo } from "../controllers/admin.auth.controller";
+import { loginAdmin, createAdmin, updateAdmin, getCustomers, getCustomer, getAdminInfo, getAllAdmins } from "../controllers/admin.auth.controller";
 import { authenticateJWT } from "../middleware/auth";
 
 const router = Router();
@@ -18,5 +18,8 @@ router.put("/:id", authenticateJWT as any, updateAdmin as any);
 
 router.get("/customers", authenticateJWT as any, getCustomers as any)
 router.get("/customers/:id", authenticateJWT as any, getCustomer as any)
+
+// get admins
+router.get("/", authenticateJWT as any, getAllAdmins as any);
 
 export default router;
