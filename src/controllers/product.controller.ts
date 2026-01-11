@@ -353,3 +353,27 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 }
+
+
+export const deleteProduct = async (req: AuthRequest, res: Response) => {
+  const user = req.user;
+  if (!user) return res.status(401).json({ message: "Unauthorized" });
+  // Implementation for deleting a product goes here
+  try {
+    const { id } = req.params;
+
+    const deletedCount = await db
+      .delete(products)
+      .where(eq(products.id, id))
+      .returning()
+      .then((rows) => rows.length);
+
+    if (deletedCount === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    res.json({ success: true, message: "Product deleted successfully" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}

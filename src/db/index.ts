@@ -8,7 +8,7 @@ import { admins } from '../models/admin.model';
 import { products } from '../models/product.model';
 import { customers } from '../models/customer.model';
 import { cartItems } from '../models/cartItems.model';
-
+import { orderItems, orders, orderItemsRelations, ordersRelations } from '../models/order.model';
 const connectionString = process.env.DATABASE_URL
 
 
@@ -21,8 +21,11 @@ export const db = drizzle(client, {
     admins,
     products,
     customers,
-    cartItems
+    cartItems,
+    orderItems,
+    orders,
+    orderItemsRelations,
+    ordersRelations
   },
 });
 
-        

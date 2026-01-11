@@ -16,12 +16,15 @@ import adminRoutes from "./routes/admin.router";
 import productRoutes from "./routes/product.routes";
 import cartRoutes from "./routes/cart.route";
 import uploadRoutes from "./routes/upload.router";
-
+import orderRoutes from "./routes/order.router";
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:3000", // MUST specify exact frontend URL (cannot use '*')
+  credentials: true,
+}));
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -50,6 +53,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/cart", cartRoutes);
+app.use("/api/orders", orderRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

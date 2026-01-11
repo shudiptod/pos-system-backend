@@ -1,16 +1,16 @@
-// import { Router } from "express";
-// import { createOrder, dispatchOrder } from "../controllers/order.controller";
-// import { authenticateJWT } from "../middleware/auth";
-// import { authorizeResource } from "../middleware/permissions";
+import { optionalAuthenticate } from "../middleware/customerAuth";
+import { cancelOrder, createOrder, getOrder } from "../controllers/order.controller";
+import { Router } from "express";
 
-// const router = Router();
+const router = Router();
 
-// // Create order
-// router.post("/", authenticateJWT, authorizeResource("order", "create"), createOrder);
+// POST /api/orders (Place new order)
+router.post("/", optionalAuthenticate, createOrder);
 
-// // Dispatch order
-// router.post("/dispatch/:id", authenticateJWT, authorizeResource("order", "dispatch"), dispatchOrder);
+// GET /api/orders/:id (View order receipt)
+router.get("/:id", getOrder);
 
-// export default router;
+// POST /api/orders/:id/cancel (Cancel & Restock)
+router.post("/:id/cancel", cancelOrder);
 
-
+export default router;

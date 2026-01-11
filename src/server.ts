@@ -6,7 +6,11 @@ dotenv.config();
 const PORT = process.env.PORT;
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  if (process.env.NODE_ENV === "production") {
+    console.log(`Server running in production mode on port ${PORT}`);
+  } else {
+    console.log(`Server running in development mode on port ${PORT}`);
+  }
 
 });
 

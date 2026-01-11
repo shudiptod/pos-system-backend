@@ -5,6 +5,5 @@ export * from './customer.model';
 export * from './product.model';
 export * from './productVariant.model';
 export * from './order.model';
-export * from './orderItem.model';
 export * from './carts.model';
 export * from './cartItems.model';

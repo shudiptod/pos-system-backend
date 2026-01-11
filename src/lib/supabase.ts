@@ -31,6 +31,7 @@ export const createSupabaseClient = (token?: string) => {
 export const uploadImageToSupabase = async (file: Express.Multer.File, folder = "default") => {
   try {
 
+    console.log("hello 2");
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
     // CHANGE 2: Create a Read Stream from the file path (Low Memory usage)
     const fileStream = fs.createReadStream(file.path);
@@ -43,8 +44,9 @@ export const uploadImageToSupabase = async (file: Express.Multer.File, folder = 
         duplex: 'half', // Important for streaming in Node.js environments
         upsert: true,
       });
-
+    console.log(data, "data");
     if (error) {
+      console.log("error", error);
       throw error;
     }
 
@@ -54,6 +56,7 @@ export const uploadImageToSupabase = async (file: Express.Multer.File, folder = 
     });
 
     const { data: publicUrlData } = supabase.storage.from("store-assets").getPublicUrl(data.path);
+    console.log(publicUrlData, "publicUrlData");
     return publicUrlData.publicUrl;
 
   } catch (error) {

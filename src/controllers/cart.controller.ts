@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../db";
 import { carts } from "../models/carts.model";
@@ -7,9 +7,10 @@ import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
 import { eq, and, lte, inArray, sql } from "drizzle-orm";
 import { ZodError } from "zod";
+import { AuthRequest } from "../middleware/customerAuth";
 
-const getActiveCartId = async (req: Request, res: Response) => {
-  const customerId = (req as any).user?.id;
+const getActiveCartId = async (req: AuthRequest, res: Response) => {
+  const customerId = (req as any).customer?.id;
   let guestId = req.cookies.cart_guest_id;
 
   if (!customerId && !guestId) {
@@ -44,13 +45,13 @@ const getActiveCartId = async (req: Request, res: Response) => {
   return newCart.id;
 };
 
-export const getCart = async (req: Request, res: Response) => {
+export const getCart = async (req: AuthRequest, res: Response) => {
   try {
     const cartId = await getActiveCartId(req, res);
 
     // 1. AUTO-CLEANUP: Remove items where VARIANT stock is 0
     // We filter by variants having stock <= 0
-    const outOfStockVariants = db.select({ id: productVariants.id }).from(productVariants).where(lte(productVariants.stock, 0)); 
+    const outOfStockVariants = db.select({ id: productVariants.id }).from(productVariants).where(lte(productVariants.stock, 0));
 
     await db.delete(cartItems).where(and(eq(cartItems.cartId, cartId), inArray(cartItems.variantId, outOfStockVariants)));
 
@@ -61,11 +62,10 @@ export const getCart = async (req: Request, res: Response) => {
         productId: cartItems.productId,
         variantId: cartItems.variantId,
         name: products.title,
-        image: productVariants.images, 
+        image: productVariants.images,
         variantName: productVariants.title,
-        price: productVariants.price, 
+        price: productVariants.price,
         stock: productVariants.stock,
-
         quantity: cartItems.quantity,
       })
       .from(cartItems)
@@ -83,7 +83,7 @@ export const getCart = async (req: Request, res: Response) => {
   }
 };
 
-export const addToCart = async (req: Request, res: Response) => {
+export const addToCart = async (req: AuthRequest, res: Response) => {
   try {
     // 1. ZOD PARSE 
     const { productId, variantId, quantity } = addToCartSchema.parse(req.body);
@@ -102,7 +102,7 @@ export const addToCart = async (req: Request, res: Response) => {
       .where(
         and(
           eq(cartItems.cartId, cartId),
-          eq(cartItems.variantId, variantId) 
+          eq(cartItems.variantId, variantId)
         )
       );
 
@@ -113,7 +113,7 @@ export const addToCart = async (req: Request, res: Response) => {
       return res.status(400).json({ error: `Only ${availableStock} items available.` });
     }
 
-    // 5. UPSERT
+    // 4. UPSERT (Update or Insert)
     if (existingItem) {
       await db
         .update(cartItems)
@@ -128,7 +128,38 @@ export const addToCart = async (req: Request, res: Response) => {
       });
     }
 
-    res.json({ success: true, message: "Added to cart" });
+    // =========================================================
+    // 5. FETCH LATEST CART STATE (New Addition)
+    // =========================================================
+    // This logic matches your getCart controller exactly
+    const items = await db
+      .select({
+        id: cartItems.id,
+        productId: cartItems.productId,
+        variantId: cartItems.variantId,
+        name: products.title,
+        image: productVariants.images,
+        variantName: productVariants.title,
+        price: productVariants.price,
+        stock: productVariants.stock,
+        quantity: cartItems.quantity,
+      })
+      .from(cartItems)
+      .innerJoin(products, eq(cartItems.productId, products.id))
+      .innerJoin(productVariants, eq(cartItems.variantId, productVariants.id))
+      .where(eq(cartItems.cartId, cartId));
+
+    const subtotal = items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+
+    // 6. Return the FULL cart object
+    res.json({
+      success: true,
+      message: "Added to cart",
+      cartId,
+      items,      // <--- Frontend can now update immediately
+      subtotal
+    });
+
   } catch (error) {
     console.error("ADD TO CART ERROR:", error);
     if (error instanceof ZodError) return res.status(400).json({ error: error.issues[0].message });
@@ -136,7 +167,7 @@ export const addToCart = async (req: Request, res: Response) => {
   }
 };
 
-export const updateCartItem = async (req: Request, res: Response) => {
+export const updateCartItem = async (req: AuthRequest, res: Response) => {
   try {
     const { itemId } = req.params;
     const { quantity } = updateCartItemSchema.parse(req.body);
@@ -165,7 +196,7 @@ export const updateCartItem = async (req: Request, res: Response) => {
   }
 };
 
-export const removeCartItem = async (req: Request, res: Response) => {
+export const removeCartItem = async (req: AuthRequest, res: Response) => {
   try {
     const { itemId } = req.params;
     await db.delete(cartItems).where(eq(cartItems.id, itemId));
