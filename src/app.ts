@@ -18,11 +18,29 @@ import cartRoutes from "./routes/cart.route";
 import uploadRoutes from "./routes/upload.router";
 import orderRoutes from "./routes/order.router";
 
+const allowedOrigins = [
+  "http://localhost:3000",                  // Local Web
+  "https://ecommerce-frontend-99o2zymab-shudiptods-projects.vercel.app",
+  "https://www.gajittobd.com"    // Live Web
+  // Add other web domains here if needed
+];
+
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
-  origin: "http://localhost:3000", // MUST specify exact frontend URL (cannot use '*')
+  origin: (origin, callback) => {
+    // 1. Allow Mobile Apps & Tools (Postman)
+    // Requests from Flutter/Mobile usually have NO origin header.
+    if (!origin) return callback(null, true);
+
+    // 2. Allow specific Web Origins
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }, // MUST specify exact frontend URL (cannot use '*')
   credentials: true,
 }));
 app.use(morgan("dev"));
