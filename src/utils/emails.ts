@@ -10,7 +10,7 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
 
     try {
         const data = await resend.emails.send({
-            from: 'MMH Station 25 <noreply@yourdomain.com>', // You need to verify a domain on Resend
+            from: 'Gajitto <hello@optiforgelabs.com>', // You need to verify a domain on Resend
             to,
             subject,
             html,
