@@ -7,6 +7,10 @@ import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
 import { cartItems } from "../models";
 import { AuthRequest } from "../middleware/customerAuth";
+import { AuthRequest as AdminAuthRequest } from "../middleware/auth";
+import { getOrderConfirmationEmail } from "../utils/orderConfirmationTemplate";
+import { sendEmail } from "../utils/emails";
+import { websiteSettings } from "../models/websiteSettings.model";
 
 // GET: Single Order
 export const getOrder = async (req: Request, res: Response) => {
@@ -28,24 +32,51 @@ export const getOrder = async (req: Request, res: Response) => {
     }
 };
 
+// get all orders from db
+
+export const getAllOrders = async (req: AdminAuthRequest, res: Response) => {
+    try {
+
+        const user = req.user;
+        if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+        const allOrders = await db.select().from(orders);
+        res.json(allOrders);
+    } catch (error) {
+        res.status(500).json({ message: "Error fetching orders", error });
+    }
+}
+
 // POST: Place Order (The Complex One)
 export const createOrder = async (req: AuthRequest, res: Response) => {
     try {
-        // 1. Validate Input using Zod
-        // (Assuming user is authenticated and req.user.id exists)
+        // 1. Validate Input
         const body = createOrderSchema.parse(req.body);
-        const userId = req.customer?.id; // TypeScript knows this might be undefined
+        const userId = req.customer?.id;
+
+        // 2. Fetch Global Settings (for Shipping Rates)
+        const [settings] = await db.select().from(websiteSettings).limit(1);
+
+        // Default fallbacks if settings table is empty
+        const rateInside = settings?.shippingInsideDhaka ?? 60;
+        const rateOutside = settings?.shippingOutsideDhaka ?? 120;
+
+        // 3. Determine Shipping Cost
+        // Simple logic: If city is "Dhaka", use inside rate.
+        const isDhaka = body.shippingAddress.city.trim().toLowerCase().includes("dhaka");
+        const shippingCost = isDhaka ? rateInside : rateOutside;
 
         const result = await db.transaction(async (tx) => {
-            // A. Fetch Cart & Product Details
-            // We join to get the LIVE price and LIVE stock
+            // A. Fetch Cart & Product Details (Live Price/Stock)
             const userCartItems = await tx
                 .select({
                     productId: cartItems.productId,
                     variantId: cartItems.variantId,
                     quantity: cartItems.quantity,
-                    price: productVariants.price, // Live DB price
-                    stock: productVariants.stock, // Live DB stock
+                    price: productVariants.price,
+                    stock: productVariants.stock,
+                    // Fetch images for the email
+                    image: productVariants.images,
                     productName: products.title,
                     variantName: productVariants.title
                 })
@@ -58,32 +89,36 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 throw new Error("Cart is empty or invalid");
             }
 
-            // B. Validation & Total Calculation
-            let calculatedTotal = 0;
+            // B. Validation & Subtotal Calculation
+            let subtotal = 0;
 
             for (const item of userCartItems) {
-                if (item.stock < item.quantity) {
+                if ((item.stock || 0) < item.quantity) {
                     throw new Error(`Out of stock: ${item.productName} (${item.variantName})`);
                 }
-                // Always use numeric/string for currency math, never JS float
-                calculatedTotal += Number(item.price) * item.quantity;
+                subtotal += Number(item.price) * item.quantity;
             }
 
-            // C. Create Order
+            // C. Final Total Calculation
+            const totalAmount = subtotal + shippingCost;
+
+            // D. Create Order
             const [newOrder] = await tx
                 .insert(orders)
                 .values({
-                    customerId: userId, // Ensure this matches your Auth system
-                    totalAmount: calculatedTotal.toString(),
+                    customerId: userId,
+                    totalAmount: totalAmount.toString(), // Grand Total
                     status: 'pending',
                     paymentMethod: body.paymentMethod,
-                    paymentStatus: 'unpaid', // COD default
+                    paymentStatus: 'unpaid',
                     shippingAddress: body.shippingAddress,
-                    billingAddress: body.billingAddress || body.shippingAddress, // Fallback logic
+                    billingAddress: body.billingAddress || body.shippingAddress,
+                    // If you added a shippingCost column to orders, add it here:
+                    // shippingCost: shippingCost.toString() 
                 })
                 .returning();
 
-            // D. Snapshot Items
+            // E. Snapshot Items
             await tx.insert(orderItems).values(
                 userCartItems.map((item) => ({
                     orderId: newOrder.id,
@@ -95,7 +130,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 }))
             );
 
-            // E. Deduct Stock Immediately
+            // F. Deduct Stock
             for (const item of userCartItems) {
                 await tx
                     .update(productVariants)
@@ -105,20 +140,52 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                     .where(eq(productVariants.id, item.variantId));
             }
 
-            // F. Close Cart
+            // G. Close Cart
             await tx
                 .update(carts)
                 .set({ status: 'ordered' })
                 .where(eq(carts.id, body.cartId));
 
-            return newOrder;
+            // Return necessary data for the email
+            return { order: newOrder, items: userCartItems, subtotal, shippingCost };
         });
 
-        return res.status(201).json(result);
+        // 4. Send Confirmation Email (Async - don't block response)
+        const emailHtml = getOrderConfirmationEmail({
+            id: result.order.id,
+            subtotal: result.subtotal,
+            shippingCost: result.shippingCost,
+            total: Number(result.order.totalAmount),
+            customerName: body.shippingAddress.fullName,
+            address: `${body.shippingAddress.street}, ${body.shippingAddress.city}`,
+            phone: body.shippingAddress.phone,
+            // Map the DB items to the format the email template expects
+            items: result.items.map(item => ({
+                name: item.productName,
+                variantName: item.variantName,
+                quantity: item.quantity,
+                price: item.price,
+                // Ensure image is a string (DB might store array or JSON)
+                image: Array.isArray(item.image) ? item.image[0] : item.image
+            }))
+        });
+
+        if (req.customer?.email) {
+            sendEmail(req.customer.email, "Order Confirmation - Gajitto", emailHtml);
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: "Order placed successfully",
+            orderId: result.order.id
+        });
 
     } catch (error: any) {
-        console.error(error);
-        return res.status(400).json({ message: error.message || "Order failed" });
+        console.error("Create Order Error:", error);
+        return res.status(400).json({
+            success: false,
+            message: error.message || "Order failed"
+        });
     }
 };
 

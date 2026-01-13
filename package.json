@@ -33,6 +33,7 @@
     "multer": "^2.0.2",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
+    "resend": "^6.7.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

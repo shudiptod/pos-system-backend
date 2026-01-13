@@ -17,6 +17,8 @@ import productRoutes from "./routes/product.routes";
 import cartRoutes from "./routes/cart.route";
 import uploadRoutes from "./routes/upload.router";
 import orderRoutes from "./routes/order.router";
+import websiteSettingsRoutes from "./routes/websiteSettings.router";
+import storeLocationRoutes from "./routes/storeLocation.router";
 
 const allowedOrigins = [
   "http://localhost:3000",                  // Local Web
@@ -73,6 +75,8 @@ app.use("/api/products", productRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/stores", storeLocationRoutes);
+app.use("/api/settings", websiteSettingsRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

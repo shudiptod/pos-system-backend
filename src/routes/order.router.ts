@@ -1,11 +1,15 @@
 import { optionalAuthenticate } from "../middleware/customerAuth";
-import { cancelOrder, createOrder, getOrder } from "../controllers/order.controller";
+import { cancelOrder, createOrder, getAllOrders, getOrder } from "../controllers/order.controller";
 import { Router } from "express";
+import { authenticateJWT, authorize } from "../middleware/auth";
 
 const router = Router();
 
 // POST /api/orders (Place new order)
 router.post("/", optionalAuthenticate, createOrder);
+
+// get all orders
+router.get("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, getAllOrders as any);
 
 // GET /api/orders/:id (View order receipt)
 router.get("/:id", getOrder);
