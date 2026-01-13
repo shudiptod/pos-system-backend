@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { db } from "../db";
 import { eq, and, ilike, gte, lte, desc, asc, sql, inArray, or, not } from "drizzle-orm";
 import { z } from "zod";
@@ -8,7 +8,6 @@ import { AuthRequest } from "../middleware/auth";
 import { products, createProductSchema } from "../models/product.model";
 import { categories } from "../models/category.model";
 import { productVariants, createVariantSchema } from "../models/productVariant.model";
-import { uploadImageToSupabase } from "../lib/supabase";
 import { generateSlug } from "../utils/slugify";
 
 // ---------------------------------------------------------
@@ -29,7 +28,7 @@ const incomingPayloadSchema = createProductSchema.extend({
   sku: z.string().optional(),
 });
 
-export const createProduct = async (req: AuthRequest, res: Response) => {
+export const createProduct = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const user = req.user;
     if (!user) return res.status(401).json({ message: "Unauthorized" });
@@ -62,17 +61,22 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
         cleanImages = v.images.filter((img: any) => typeof img === 'string');
       }
 
-      return {
+      let responseObject = {
         ...v,
         title: v.title || "Default",
         price: Number(v.price) || 0,
         stock: Number(v.stock) || 0,
         images: cleanImages,
-        video: typeof v.video === 'string' ? v.video : null,
         options: cleanOptions,
         sku: v.sku || null,
         barcode: v.barcode || null
       };
+
+      if (typeof v.video === 'string') {
+        responseObject.video = v.video;
+      }
+
+      return responseObject;
     });
 
     const cleanedData = {
@@ -127,7 +131,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
 
   } catch (error: any) {
     console.error("Create Product Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    next(error);
   }
 };
 
