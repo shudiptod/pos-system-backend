@@ -42,6 +42,7 @@ app.use(cors({
     }
   }, // MUST specify exact frontend URL (cannot use '*')
   credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
 }));
 app.use(morgan("dev"));
 app.use(express.json());

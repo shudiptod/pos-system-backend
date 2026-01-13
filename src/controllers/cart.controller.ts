@@ -15,11 +15,17 @@ const getActiveCartId = async (req: AuthRequest, res: Response) => {
 
   if (!customerId && !guestId) {
     guestId = uuidv4();
+
+    // DETERMINING PRODUCTION MODE
+    const isProduction = process.env.NODE_ENV === "production";
+
     res.cookie("cart_guest_id", guestId, {
-      maxAge: 30 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+
+      // CRITICAL FIXES FOR LIVE:
+      secure: isProduction, // Must be true if sameSite is 'none'
+      sameSite: isProduction ? "none" : "lax", // 'none' allows cross-domain cookies
     });
   }
 
