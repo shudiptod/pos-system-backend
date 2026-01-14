@@ -23,7 +23,8 @@ import storeLocationRoutes from "./routes/storeLocation.router";
 const allowedOrigins = [
   "http://localhost:3000",                  // Local Web
   "https://ecommerce-frontend-99o2zymab-shudiptods-projects.vercel.app",
-  "https://www.gajittobd.com"    // Live Web
+  "https://www.gajittobd.com",    // Live Web
+  "https://admin.gajittobd.com"
   // Add other web domains here if needed
 ];
 
