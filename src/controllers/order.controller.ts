@@ -170,8 +170,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
             }))
         });
 
-        if (req.customer?.email) {
-            sendEmail(req.customer.email, "Order Confirmation - Gajitto", emailHtml);
+        if (body.shippingAddress.email) {
+            sendEmail(body.shippingAddress.email, "Order Confirmation - Gajitto", emailHtml);
         }
 
         return res.status(201).json({
