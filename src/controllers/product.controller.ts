@@ -177,6 +177,7 @@ export const getProductById = async (req: Request, res: Response) => {
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
+    // 1. Separate Standard Params from Dynamic Option Params
     const {
       category,
       search,
@@ -185,15 +186,8 @@ export const getProducts = async (req: Request, res: Response) => {
       page = "1",
       limit = "12",
       sort = "newest",
-    } = req.query as {
-      category?: string;
-      search?: string;
-      minPrice?: string;
-      maxPrice?: string;
-      page?: string;
-      limit?: string;
-      sort?: string;
-    };
+      ...dynamicFilters // <--- Capture all other params (e.g. Color, Storage)
+    } = req.query;
 
     const pageNum = Math.max(1, Number(page));
     const limitNum = Math.min(Math.max(1, Number(limit)), 100);
@@ -202,20 +196,76 @@ export const getProducts = async (req: Request, res: Response) => {
     // --- Build Conditions ---
     const whereConditions = [eq(products.isPublished, true)];
 
-    if (category) whereConditions.push(eq(categories.slug, category));
+    // 2. RECURSIVE CATEGORY FILTER
+    if (category) {
+      const [rootCategory] = await db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(eq(categories.slug, category as string));
+
+      if (rootCategory) {
+        // Recursive CTE to get all child category IDs
+        const recursiveResult = await db.execute(sql`
+          WITH RECURSIVE category_tree AS (
+            SELECT id FROM ${categories} WHERE id = ${rootCategory.id}
+            UNION ALL
+            SELECT c.id FROM ${categories} c
+            INNER JOIN category_tree ct ON ct.id = c.parent_id
+          )
+          SELECT id FROM category_tree
+        `);
+
+        const categoryIds = recursiveResult.map((row: any) => row.id);
+
+        if (categoryIds.length > 0) {
+          whereConditions.push(inArray(products.categoryId, categoryIds));
+        } else {
+          whereConditions.push(eq(products.categoryId, rootCategory.id));
+        }
+      } else {
+        return res.json({ success: true, data: [], pagination: { page: pageNum, limit: limitNum, total: 0, totalPages: 0 } });
+      }
+    }
+
+    // 3. SEARCH FILTER
     if (search) whereConditions.push(ilike(products.title, `%${search}%`));
 
-    // Ensure minPrice/maxPrice are handled safely (Drizzle expects strings for decimal cols)
-    if (minPrice) whereConditions.push(gte(productVariants.price, minPrice));
-    if (maxPrice) whereConditions.push(lte(productVariants.price, maxPrice));
+    // 4. PRICE FILTERS
+    if (minPrice) whereConditions.push(gte(productVariants.price, minPrice as string));
+    if (maxPrice) whereConditions.push(lte(productVariants.price, maxPrice as string));
+
+    // 5. DYNAMIC JSONB FILTERS (NEW)
+    // Loop through dynamic filters like 'Color', 'RAM'
+    Object.entries(dynamicFilters).forEach(([key, value]) => {
+      if (!value) return;
+
+      // Ensure we have an array of strings to check against
+      // If the URL is ?Color=Red,Blue -> express might give string "Red,Blue" or array
+      // We handle the comma split safely here or rely on express query parser
+      let values: string[] = [];
+
+      if (Array.isArray(value)) {
+        values = value as string[];
+      } else if (typeof value === 'string') {
+        values = value.split(','); // Handle ?Color=Red,Blue
+      }
+
+      if (values.length > 0) {
+        // SQL: product_variants.options->>'Key' IN ('Value1', 'Value2')
+        whereConditions.push(
+          inArray(sql<string>`${productVariants.options}->>${key}`, values)
+        );
+      }
+    });
 
     // --- Sorting Strategy ---
-    let orderByClause: any = desc(products.createdAt);
+    const stockSort = sql`CASE WHEN sum(${productVariants.stock}) > 0 THEN 1 ELSE 0 END`;
+    let orderByClause: any = [desc(stockSort), desc(products.createdAt)];
 
-    if (sort === "price_asc") orderByClause = asc(sql`min(${productVariants.price})`);
-    if (sort === "price_desc") orderByClause = desc(sql`min(${productVariants.price})`);
-    if (sort === "name_asc") orderByClause = asc(products.title);
-    if (sort === "oldest") orderByClause = asc(products.createdAt);
+    if (sort === "price_asc") orderByClause = [desc(stockSort), asc(sql`min(${productVariants.price})`)];
+    if (sort === "price_desc") orderByClause = [desc(stockSort), desc(sql`min(${productVariants.price})`)];
+    if (sort === "name_asc") orderByClause = [desc(stockSort), asc(products.title)];
+    if (sort === "oldest") orderByClause = [desc(stockSort), asc(products.createdAt)];
 
     // --- EXECUTE QUERY ---
     const [data, totalCountResult] = await Promise.all([
@@ -231,27 +281,18 @@ export const getProducts = async (req: Request, res: Response) => {
           minPrice: sql<number>`min(${productVariants.price})`,
           maxPrice: sql<number>`max(${productVariants.price})`,
           stock: sql<number>`sum(${productVariants.stock})`,
-
-          // 🔥 FIXED LINE: Extract scalar string first, then aggregate
           thumbnail: sql<string>`(array_agg(${productVariants.images}[1]))[1]`,
+          options: sql<any>`jsonb_agg(distinct ${productVariants.options})`
         })
         .from(products)
         .leftJoin(categories, eq(products.categoryId, categories.id))
         .leftJoin(productVariants, eq(products.id, productVariants.productId))
         .where(and(...whereConditions))
-        .groupBy(
-          products.id,
-          products.title,
-          products.slug,
-          products.createdAt,
-          categories.id,
-          categories.name,
-          categories.slug
-        )
-        .orderBy(orderByClause)
+        .groupBy(products.id, categories.id) // Group by primary keys
+        .orderBy(...orderByClause)
         .limit(limitNum)
         .offset(offset),
-      // Count Query
+
       db
         .select({ count: sql<number>`count(distinct ${products.id})` })
         .from(products)
@@ -275,7 +316,6 @@ export const getProducts = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Get Products Error:", error);
-    // Return the actual error message to help debugging
     res.status(500).json({ success: false, message: "Failed to fetch products", error: error.message });
   }
 };

@@ -50,7 +50,7 @@ export const getOrderConfirmationEmail = (order: any) => {
           
           <tr>
             <td style="padding: 40px 40px 20px 40px; text-align: center;">
-              <img src="https://via.placeholder.com/150x50/22c55e/ffffff?text=MMH+STATION" alt="MMH Station 25" style="height: 40px; margin-bottom: 20px;" />
+              <img src="https://via.placeholder.com/150x50/22c55e/ffffff?text=MMH+STATION" alt="Gajitto" style="height: 40px; margin-bottom: 20px;" />
               <h1 style="margin: 0; color: ${THEME.text}; font-size: 24px; letter-spacing: -0.5px;">Thanks for your order!</h1>
               <p style="margin: 10px 0 0; color: ${THEME.textMuted}; font-size: 16px;">Order #${order.id.slice(0, 8).toUpperCase()}</p>
             </td>
@@ -102,7 +102,7 @@ export const getOrderConfirmationEmail = (order: any) => {
 
           <tr>
             <td align="center" style="padding: 40px;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL}/orders/${order.id}" style="display: inline-block; background-color: ${THEME.accent}; color: #000000; padding: 14px 32px; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 50px;">
+              <a href="${process.env.FRONTEND_APP_URL}/order-success/${order.id}" style="display: inline-block; background-color: ${THEME.accent}; color: #000000; padding: 14px 32px; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 50px;">
                 Track Your Order
               </a>
             </td>
@@ -111,7 +111,7 @@ export const getOrderConfirmationEmail = (order: any) => {
           <tr>
             <td style="background-color: ${THEME.bg}; padding: 30px 40px; text-align: center; border-top: 1px solid ${THEME.border};">
               <p style="margin: 0; color: ${THEME.textMuted}; font-size: 12px;">
-                &copy; ${new Date().getFullYear()} MMH Station 25. All rights reserved.<br>
+                &copy; ${new Date().getFullYear()} Gajitto. All rights reserved.<br>
                 Dhaka, Bangladesh
               </p>
               <div style="margin-top: 15px;">
