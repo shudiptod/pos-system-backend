@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
-import { createCategory, getCategories, getCategoryBySlug } from "../controllers/category.controller";
+import { createCategory, getCategories, getCategoryBySlug, getRootCategories } from "../controllers/category.controller";
 import { createProduct, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
 import { addVariantToProduct, deleteVariant, updateVariant } from "../controllers/variant.controller";
 
@@ -14,8 +14,12 @@ router.post(
     createCategory as any
 );
 router.get("/categories", getCategories);
+
+router.get("/roots", getRootCategories);
+
 // get single category
 router.get("/categories/:slug", getCategoryBySlug);
+
 
 
 router.post("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createProduct as any);

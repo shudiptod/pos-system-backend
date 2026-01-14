@@ -3,7 +3,7 @@ import { db } from "../db";
 import { categories, createCategorySchema } from "../models/category.model";
 import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
-import { eq, inArray, min, max } from "drizzle-orm";
+import { eq, inArray, min, max, and, isNull } from "drizzle-orm";
 import { AuthRequest } from "@/middleware/auth";
 
 
@@ -62,6 +62,28 @@ export const getCategories = async (req: Request, res: Response) => {
   }
 };
 
+
+export const getRootCategories = async (req: Request, res: Response) => {
+  try {
+    const rootCategories = await db
+      .select()
+      .from(categories)
+      .where(
+        and(
+          isNull(categories.parentId), // The key filter
+          eq(categories.isActive, true) // Only active categories
+        )
+      );
+
+    return res.json({
+      success: true,
+      data: rootCategories,
+    });
+  } catch (error: any) {
+    console.error("Get Root Categories Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 
 // --- GET Single CATEGORY With Ancestors and Children by Slug ---
