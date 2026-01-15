@@ -174,10 +174,8 @@ export const getProductById = async (req: Request, res: Response) => {
 // 3. GET ALL PRODUCTS (Catalog List)
 // ---------------------------------------------------------
 
-
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    // 1. Separate Standard Params from Dynamic Option Params
     const {
       category,
       search,
@@ -186,7 +184,7 @@ export const getProducts = async (req: Request, res: Response) => {
       page = "1",
       limit = "12",
       sort = "newest",
-      ...dynamicFilters // <--- Capture all other params (e.g. Color, Storage)
+      ...dynamicFilters
     } = req.query;
 
     const pageNum = Math.max(1, Number(page));
@@ -196,7 +194,7 @@ export const getProducts = async (req: Request, res: Response) => {
     // --- Build Conditions ---
     const whereConditions = [eq(products.isPublished, true)];
 
-    // 2. RECURSIVE CATEGORY FILTER
+    // 1. RECURSIVE CATEGORY FILTER
     if (category) {
       const [rootCategory] = await db
         .select({ id: categories.id })
@@ -204,7 +202,6 @@ export const getProducts = async (req: Request, res: Response) => {
         .where(eq(categories.slug, category as string));
 
       if (rootCategory) {
-        // Recursive CTE to get all child category IDs
         const recursiveResult = await db.execute(sql`
           WITH RECURSIVE category_tree AS (
             SELECT id FROM ${categories} WHERE id = ${rootCategory.id}
@@ -227,31 +224,25 @@ export const getProducts = async (req: Request, res: Response) => {
       }
     }
 
-    // 3. SEARCH FILTER
-    if (search) whereConditions.push(ilike(products.title, `%${search}%`));
+    // 2. SEARCH FILTER
+    if (search) {
+      whereConditions.push(
+        sql`(${products.title} ILIKE ${`%${search}%`} OR ${productVariants.title} ILIKE ${`%${search}%`} OR ${productVariants.sku} ILIKE ${`%${search}%`})`
+      );
+    }
 
-    // 4. PRICE FILTERS
+    // 3. PRICE FILTERS
     if (minPrice) whereConditions.push(gte(productVariants.price, minPrice as string));
     if (maxPrice) whereConditions.push(lte(productVariants.price, maxPrice as string));
 
-    // 5. DYNAMIC JSONB FILTERS (NEW)
-    // Loop through dynamic filters like 'Color', 'RAM'
+    // 4. DYNAMIC FILTERS
     Object.entries(dynamicFilters).forEach(([key, value]) => {
       if (!value) return;
-
-      // Ensure we have an array of strings to check against
-      // If the URL is ?Color=Red,Blue -> express might give string "Red,Blue" or array
-      // We handle the comma split safely here or rely on express query parser
       let values: string[] = [];
-
-      if (Array.isArray(value)) {
-        values = value as string[];
-      } else if (typeof value === 'string') {
-        values = value.split(','); // Handle ?Color=Red,Blue
-      }
+      if (Array.isArray(value)) values = value as string[];
+      else if (typeof value === 'string') values = value.split(',');
 
       if (values.length > 0) {
-        // SQL: product_variants.options->>'Key' IN ('Value1', 'Value2')
         whereConditions.push(
           inArray(sql<string>`${productVariants.options}->>${key}`, values)
         );
@@ -259,11 +250,11 @@ export const getProducts = async (req: Request, res: Response) => {
     });
 
     // --- Sorting Strategy ---
-    const stockSort = sql`CASE WHEN sum(${productVariants.stock}) > 0 THEN 1 ELSE 0 END`;
+    const stockSort = sql`CASE WHEN ${productVariants.stock} > 0 THEN 1 ELSE 0 END`;
     let orderByClause: any = [desc(stockSort), desc(products.createdAt)];
 
-    if (sort === "price_asc") orderByClause = [desc(stockSort), asc(sql`min(${productVariants.price})`)];
-    if (sort === "price_desc") orderByClause = [desc(stockSort), desc(sql`min(${productVariants.price})`)];
+    if (sort === "price_asc") orderByClause = [desc(stockSort), asc(productVariants.price)];
+    if (sort === "price_desc") orderByClause = [desc(stockSort), desc(productVariants.price)];
     if (sort === "name_asc") orderByClause = [desc(stockSort), asc(products.title)];
     if (sort === "oldest") orderByClause = [desc(stockSort), asc(products.createdAt)];
 
@@ -271,41 +262,68 @@ export const getProducts = async (req: Request, res: Response) => {
     const [data, totalCountResult] = await Promise.all([
       db
         .select({
-          id: products.id,
-          title: products.title,
+          // Parent Info
+          productId: products.id,
+          productTitle: products.title,
           slug: products.slug,
+
+          // Variant Info
+          id: productVariants.id,
+          variantTitle: productVariants.title, // <--- Fetching variant title
+          price: productVariants.price,
+          stock: productVariants.stock,
+          thumbnail: sql<string>`${productVariants.images}[1]`,
+          options: productVariants.options,
+          isFeatured: productVariants.isFeatured,
           categoryName: categories.name,
           categorySlug: categories.slug,
           createdAt: products.createdAt,
-          // Aggregates
-          minPrice: sql<number>`min(${productVariants.price})`,
-          maxPrice: sql<number>`max(${productVariants.price})`,
-          stock: sql<number>`sum(${productVariants.stock})`,
-          thumbnail: sql<string>`(array_agg(${productVariants.images}[1]))[1]`,
-          options: sql<any>`jsonb_agg(distinct ${productVariants.options})`
         })
-        .from(products)
+        .from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
         .leftJoin(categories, eq(products.categoryId, categories.id))
-        .leftJoin(productVariants, eq(products.id, productVariants.productId))
         .where(and(...whereConditions))
-        .groupBy(products.id, categories.id) // Group by primary keys
         .orderBy(...orderByClause)
         .limit(limitNum)
         .offset(offset),
 
+      // Count Query
       db
-        .select({ count: sql<number>`count(distinct ${products.id})` })
-        .from(products)
+        .select({ count: sql<number>`count(${productVariants.id})` })
+        .from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
         .leftJoin(categories, eq(products.categoryId, categories.id))
-        .leftJoin(productVariants, eq(products.id, productVariants.productId))
         .where(and(...whereConditions)),
     ]);
 
     const total = Number(totalCountResult[0]?.count || 0);
 
+    // Transform Data
+    const formattedData = data.map(item => ({
+      id: item.productId,
+      variantId: item.id,
+
+      title: item.productTitle,       // Main Product Name (e.g. "iPhone 15")
+      variantTitle: item.variantTitle, // Specific Variant Name (e.g. "Black")
+
+      // Combined title for convenience if needed
+      fullTitle: item.variantTitle ? `${item.productTitle} - ${item.variantTitle}` : item.productTitle,
+
+      slug: item.slug,
+      minPrice: item.price,
+      maxPrice: item.price,
+      stock: item.stock,
+      thumbnail: item.thumbnail,
+      options: [item.options],
+      isFeatured: item.isFeatured,
+      categoryName: item.categoryName,
+      categorySlug: item.categorySlug,
+      createdAt: item.createdAt,
+    }));
+
     res.json({
       success: true,
-      data,
+      data: formattedData,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -319,7 +337,6 @@ export const getProducts = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: "Failed to fetch products", error: error.message });
   }
 };
-
 
 // ---------------------------------------------------------
 // 4. GET SINGLE PRODUCT by slug (With All Variants)
@@ -421,3 +438,68 @@ export const deleteProduct = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 }
+
+
+export const getFeaturedProducts = async (req: Request, res: Response) => {
+  try {
+    const featuredLimit = Number(req.query.limit) || 8;
+
+    // Fetch specifically the variants marked as featured
+    const data = await db
+      .select({
+        // Parent Info
+        productId: products.id,
+        productTitle: products.title,
+        slug: products.slug,
+
+        // Variant Info
+        id: productVariants.id,
+        variantTitle: productVariants.title,
+        price: productVariants.price,
+        stock: productVariants.stock,
+        thumbnail: sql<string>`${productVariants.images}[1]`, // 1st image of this specific variant
+
+        // Meta
+        categoryName: categories.name,
+      })
+      .from(productVariants)
+      // Join Parent to get the Name/Slug
+      .innerJoin(products, eq(products.id, productVariants.productId))
+      // Join Category for the label
+      .leftJoin(categories, eq(products.categoryId, categories.id))
+      .where(and(
+        eq(products.isPublished, true),       // Parent must be published
+        eq(productVariants.isFeatured, true)  // Variant must be featured
+      ))
+      // You might want to order by recently added, or add a 'featuredOrder' column later
+      .orderBy(desc(products.createdAt))
+      .limit(featuredLimit);
+
+    // Transform to match Frontend IProduct Interface
+    const formattedData = data.map(item => ({
+      id: item.productId,
+      variantId: item.id,
+
+      title: item.productTitle,
+      variantTitle: item.variantTitle,
+      // Create a nice display title like "iPhone 15 - Midnight Black"
+      fullTitle: item.variantTitle
+        ? `${item.productTitle} - ${item.variantTitle}`
+        : item.productTitle,
+
+      slug: item.slug,
+      minPrice: item.price,
+      maxPrice: item.price,
+      stock: item.stock,
+      thumbnail: item.thumbnail,
+      categoryName: item.categoryName,
+      options: [] // Not needed for homepage cards
+    }));
+
+    res.json({ success: true, data: formattedData });
+
+  } catch (error: any) {
+    console.error("Featured Products Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

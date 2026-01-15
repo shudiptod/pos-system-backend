@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
 import { createCategory, getCategories, getCategoryBySlug, getRootCategories } from "../controllers/category.controller";
-import { createProduct, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
+import { createProduct, getFeaturedProducts, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
 import { addVariantToProduct, deleteVariant, updateVariant } from "../controllers/variant.controller";
 
 const router = Router();
@@ -20,7 +20,7 @@ router.get("/roots", getRootCategories);
 // get single category
 router.get("/categories/:slug", getCategoryBySlug);
 
-
+router.get("/featured", getFeaturedProducts);
 
 router.post("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createProduct as any);
 
