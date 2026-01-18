@@ -11,6 +11,7 @@ import { AuthRequest as AdminAuthRequest } from "../middleware/auth";
 import { getOrderConfirmationEmail } from "../utils/orderConfirmationTemplate";
 import { sendEmail } from "../utils/emails";
 import { websiteSettings } from "../models/websiteSettings.model";
+import z from "zod";
 
 // GET: Single Order
 export const getOrder = async (req: Request, res: Response) => {
@@ -48,26 +49,28 @@ export const getAllOrders = async (req: AdminAuthRequest, res: Response) => {
 }
 
 // POST: Place Order (The Complex One)
+
+
+// ... [Keep your existing imports and schema definitions] ...
+
 export const createOrder = async (req: AuthRequest, res: Response) => {
     try {
-        // 1. Validate Input
+        // 1. Validate Input (This throws a ZodError if invalid)
         const body = createOrderSchema.parse(req.body);
         const userId = req.customer?.id;
 
         // 2. Fetch Global Settings (for Shipping Rates)
         const [settings] = await db.select().from(websiteSettings).limit(1);
 
-        // Default fallbacks if settings table is empty
         const rateInside = settings?.shippingInsideDhaka ?? 60;
         const rateOutside = settings?.shippingOutsideDhaka ?? 120;
 
         // 3. Determine Shipping Cost
-        // Simple logic: If city is "Dhaka", use inside rate.
         const isDhaka = body.shippingAddress.city.trim().toLowerCase().includes("dhaka");
         const shippingCost = isDhaka ? rateInside : rateOutside;
 
         const result = await db.transaction(async (tx) => {
-            // A. Fetch Cart & Product Details (Live Price/Stock)
+            // A. Fetch Cart & Product Details
             const userCartItems = await tx
                 .select({
                     productId: cartItems.productId,
@@ -75,7 +78,6 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                     quantity: cartItems.quantity,
                     price: productVariants.price,
                     stock: productVariants.stock,
-                    // Fetch images for the email
                     image: productVariants.images,
                     productName: products.title,
                     variantName: productVariants.title
@@ -89,7 +91,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 throw new Error("Cart is empty or invalid");
             }
 
-            // B. Validation & Subtotal Calculation
+            // B. Validation & Subtotal
             let subtotal = 0;
 
             for (const item of userCartItems) {
@@ -99,7 +101,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 subtotal += Number(item.price) * item.quantity;
             }
 
-            // C. Final Total Calculation
+            // C. Total Calculation
             const totalAmount = subtotal + shippingCost;
 
             // D. Create Order
@@ -107,14 +109,12 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 .insert(orders)
                 .values({
                     customerId: userId,
-                    totalAmount: totalAmount.toString(), // Grand Total
+                    totalAmount: totalAmount.toString(),
                     status: 'pending',
                     paymentMethod: body.paymentMethod,
                     paymentStatus: 'unpaid',
                     shippingAddress: body.shippingAddress,
                     billingAddress: body.billingAddress || body.shippingAddress,
-                    // If you added a shippingCost column to orders, add it here:
-                    // shippingCost: shippingCost.toString() 
                 })
                 .returning();
 
@@ -146,11 +146,10 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 .set({ status: 'ordered' })
                 .where(eq(carts.id, body.cartId));
 
-            // Return necessary data for the email
             return { order: newOrder, items: userCartItems, subtotal, shippingCost };
         });
 
-        // 4. Send Confirmation Email (Async - don't block response)
+        // 4. Send Email
         const emailHtml = getOrderConfirmationEmail({
             id: result.order.id,
             subtotal: result.subtotal,
@@ -159,13 +158,11 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
             customerName: body.shippingAddress.fullName,
             address: `${body.shippingAddress.street}, ${body.shippingAddress.city}`,
             phone: body.shippingAddress.phone,
-            // Map the DB items to the format the email template expects
             items: result.items.map(item => ({
                 name: item.productName,
                 variantName: item.variantName,
                 quantity: item.quantity,
                 price: item.price,
-                // Ensure image is a string (DB might store array or JSON)
                 image: Array.isArray(item.image) ? item.image[0] : item.image
             }))
         });
@@ -182,6 +179,22 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
 
     } catch (error: any) {
         console.error("Create Order Error:", error);
+
+        // --- NEW ERROR HANDLING LOGIC ---
+
+        // Check if the error comes from Zod Validation
+        if (error instanceof z.ZodError) {
+            // Join all validation issues into a single readable string
+            // Example output: "Phone number is required, Invalid email address"
+            const validationMessage = error.issues.map((e) => e.message).join(", ");
+
+            return res.status(400).json({
+                success: false,
+                message: validationMessage
+            });
+        }
+
+        // Handle Standard JS Errors (like "Cart is empty" or "Out of stock")
         return res.status(400).json({
             success: false,
             message: error.message || "Order failed"
