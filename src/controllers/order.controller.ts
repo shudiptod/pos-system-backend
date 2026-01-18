@@ -230,3 +230,40 @@ export const cancelOrder = async (req: Request, res: Response) => {
         return res.status(400).json({ message: error.message });
     }
 };
+
+
+// GET: User Specific Order List
+export const getUserOrders = async (req: AuthRequest, res: Response) => {
+    try {
+        // 1. Get the logged-in user's ID
+        const userId = req.customer?.id;
+
+        console.log(userId);
+        if (!userId) {
+            return res.status(401).json({ message: "Unauthorized. Please log in." });
+        }
+
+        // 2. Fetch orders with relations
+        const userOrders = await db.query.orders.findMany({
+            where: eq(orders.customerId, userId),
+            // Include the items relation to show what was bought
+            with: {
+                items: true,
+            },
+            // Sort by newest first
+            orderBy: (orders, { desc }) => [desc(orders.createdAt)],
+        });
+
+        return res.json({
+            success: true,
+            data: userOrders
+        });
+
+    } catch (error) {
+        console.error("Error fetching user orders:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch orders"
+        });
+    }
+};
