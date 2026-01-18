@@ -1,16 +1,16 @@
 // Colors matching your Dark/Green theme
 const THEME = {
-    bg: "#111111",           // Main dark background
-    card: "#1a1a1a",         // Slightly lighter card bg
-    text: "#ffffff",
-    textMuted: "#a1a1aa",
-    accent: "#22c55e",       // Your 'brand-green' (Adjust hex if needed)
-    border: "#333333"
+  bg: "#111111",           // Main dark background
+  card: "#1a1a1a",         // Slightly lighter card bg
+  text: "#ffffff",
+  textMuted: "#a1a1aa",
+  accent: "#22c55e",       // Your 'brand-green' (Adjust hex if needed)
+  border: "#333333"
 };
 
 export const getOrderConfirmationEmail = (order: any) => {
-    // 1. Generate Items HTML
-    const itemsHtml = order.items.map((item: any) => `
+  // 1. Generate Items HTML
+  const itemsHtml = order.items.map((item: any) => `
     <tr>
       <td style="padding: 16px 0; border-bottom: 1px solid ${THEME.border};">
         <table width="100%" cellpadding="0" cellspacing="0">
@@ -31,8 +31,8 @@ export const getOrderConfirmationEmail = (order: any) => {
     </tr>
   `).join('');
 
-    // 2. Return Full HTML
-    return `
+  // 2. Return Full HTML
+  return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -102,7 +102,7 @@ export const getOrderConfirmationEmail = (order: any) => {
 
           <tr>
             <td align="center" style="padding: 40px;">
-              <a href="${process.env.FRONTEND_APP_URL}/order-success/${order.id}" style="display: inline-block; background-color: ${THEME.accent}; color: #000000; padding: 14px 32px; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 50px;">
+              <a href="${process.env.FRONTEND_APP_URL}order-success/${order.id}" style="display: inline-block; background-color: ${THEME.accent}; color: #000000; padding: 14px 32px; font-size: 16px; font-weight: bold; text-decoration: none; border-radius: 50px;">
                 Track Your Order
               </a>
             </td>
