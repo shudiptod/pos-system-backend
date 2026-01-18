@@ -24,8 +24,9 @@ const getActiveCartId = async (req: AuthRequest, res: Response) => {
       httpOnly: true,
 
       // CRITICAL FIXES FOR LIVE:
-      secure: isProduction, // Must be true if sameSite is 'none'
-      sameSite: isProduction ? "none" : "lax", // 'none' allows cross-domain cookies
+      sameSite: "lax",
+      // Keep secure true if you are on HTTPS, false if on HTTP (localhost)
+      secure: isProduction,
     });
   }
 
