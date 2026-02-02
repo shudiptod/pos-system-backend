@@ -68,11 +68,17 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
         stock: Number(v.stock) || 0,
         images: cleanImages,
         options: cleanOptions,
-        sku: v.sku || "",
-        barcode: v.barcode || ""
       };
 
-      if (typeof v.video === 'string') {
+      if (typeof v.sku === 'string' && v.sku.length > 0) {
+        responseObject.sku = v.sku;
+      }
+
+      if (typeof v.barcode === 'string' && v.barcode.length > 0) {
+        responseObject.barcode = v.barcode;
+      }
+
+      if (typeof v.video === 'string' && v.video.length > 0) {
         responseObject.video = v.video;
       }
 
