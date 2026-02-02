@@ -68,8 +68,8 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
         stock: Number(v.stock) || 0,
         images: cleanImages,
         options: cleanOptions,
-        sku: v.sku || null,
-        barcode: v.barcode || null
+        sku: v.sku || "",
+        barcode: v.barcode || ""
       };
 
       if (typeof v.video === 'string') {
