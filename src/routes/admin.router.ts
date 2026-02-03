@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { loginAdmin, createAdmin, updateAdmin, getCustomers, getCustomer, getAdminInfo, getAllAdmins } from "../controllers/admin.auth.controller";
+import { loginAdmin, createAdmin, updateAdmin, getCustomers, getCustomer, getAdminInfo, getAllAdmins, logoutAdmin } from "../controllers/admin.auth.controller";
 import { authenticateJWT } from "../middleware/auth";
 
 const router = Router();
 
 // Login route (any role)
 router.post("/login", loginAdmin as any);
+router.post("/logout", logoutAdmin as any);
 
 // Get admin info (any role)
 router.get("/me", authenticateJWT as any, getAdminInfo as any);

@@ -58,6 +58,17 @@ export const loginAdmin = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// ---------------- LOGOUT ----------------
+export const logoutAdmin = async (req: AuthRequest, res: Response) => {
+  try {
+    res.clearCookie("authToken");
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // ---------------- ROLE HIERARCHY ----------------
 const hierarchy: Record<UserRole, UserRole[]> = {
   SUPER_ADMIN: ["ADMIN", "MANAGER", "TECHNICIAN"],
