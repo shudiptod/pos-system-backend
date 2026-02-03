@@ -1,5 +1,5 @@
 import { authenticateCustomer, optionalAuthenticate } from "../middleware/customerAuth";
-import { cancelOrder, createOrder, getAllOrders, getOrder, getUserOrders } from "../controllers/order.controller";
+import { createAdminOrder, createOrder, getAllOrders, getOrder, getUserOrders, updateOrderStatus } from "../controllers/order.controller";
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
 
@@ -16,8 +16,10 @@ router.get("/me", authenticateCustomer as any, getUserOrders as any);
 // GET /api/orders/:id (View order receipt)
 router.get("/:id", getOrder);
 
+// update order status
+router.patch("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, updateOrderStatus as any);
 
-// POST /api/orders/:id/cancel (Cancel & Restock)
-router.post("/:id/cancel", cancelOrder);
+
+router.post("/admin", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createAdminOrder as any);
 
 export default router;

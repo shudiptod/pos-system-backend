@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { orders, orderItems, createOrderSchema } from "../models/order.model";
+import { orders, orderItems, createOrderSchema, orderStatusEnum } from "../models/order.model";
 import { carts } from "../models/carts.model";
 import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
@@ -12,6 +12,8 @@ import { getOrderConfirmationEmail } from "../utils/orderConfirmationTemplate";
 import { sendEmail } from "../utils/emails";
 import { websiteSettings } from "../models/websiteSettings.model";
 import z from "zod";
+import { createAdminOrderSchema } from "../models/order.model";
+import { generateUniqueOrderNumber } from "../utils/order-helper";
 
 // GET: Single Order
 export const getOrder = async (req: Request, res: Response) => {
@@ -48,20 +50,14 @@ export const getAllOrders = async (req: AdminAuthRequest, res: Response) => {
     }
 }
 
-// POST: Place Order (The Complex One)
-
-
-// ... [Keep your existing imports and schema definitions] ...
-
 export const createOrder = async (req: AuthRequest, res: Response) => {
     try {
-        // 1. Validate Input (This throws a ZodError if invalid)
+        // 1. Validate Input
         const body = createOrderSchema.parse(req.body);
         const userId = req.customer?.id;
 
-        // 2. Fetch Global Settings (for Shipping Rates)
+        // 2. Fetch Global Settings
         const [settings] = await db.select().from(websiteSettings).limit(1);
-
         const rateInside = settings?.shippingInsideDhaka ?? 60;
         const rateOutside = settings?.shippingOutsideDhaka ?? 120;
 
@@ -70,7 +66,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         const shippingCost = isDhaka ? rateInside : rateOutside;
 
         const result = await db.transaction(async (tx) => {
-            // A. Fetch Cart & Product Details
+            const orderNumber = await generateUniqueOrderNumber(tx);
             const userCartItems = await tx
                 .select({
                     productId: cartItems.productId,
@@ -91,7 +87,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 throw new Error("Cart is empty or invalid");
             }
 
-            // B. Validation & Subtotal
+            // C. Validation & Subtotal
             let subtotal = 0;
 
             for (const item of userCartItems) {
@@ -101,14 +97,18 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 subtotal += Number(item.price) * item.quantity;
             }
 
-            // C. Total Calculation
+            // D. Total Calculation
             const totalAmount = subtotal + shippingCost;
 
-            // D. Create Order
+            // ==========================================
+            // E. Create Order (NOW WITH ORDER NUMBER)
+            // ==========================================
             const [newOrder] = await tx
                 .insert(orders)
                 .values({
                     customerId: userId,
+                    orderNumber: orderNumber,
+                    source: 'online',
                     totalAmount: totalAmount.toString(),
                     status: 'pending',
                     paymentMethod: body.paymentMethod,
@@ -118,7 +118,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 })
                 .returning();
 
-            // E. Snapshot Items
+            // F. Snapshot Items
             await tx.insert(orderItems).values(
                 userCartItems.map((item) => ({
                     orderId: newOrder.id,
@@ -130,7 +130,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                 }))
             );
 
-            // F. Deduct Stock
+            // G. Deduct Stock
             for (const item of userCartItems) {
                 await tx
                     .update(productVariants)
@@ -140,7 +140,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
                     .where(eq(productVariants.id, item.variantId));
             }
 
-            // G. Close Cart
+            // H. Close Cart
             await tx
                 .update(carts)
                 .set({ status: 'ordered' })
@@ -150,8 +150,10 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         });
 
         // 4. Send Email
+        // Pass the readable Order Number to the email template
         const emailHtml = getOrderConfirmationEmail({
-            id: result.order.id,
+            id: result.order.orderNumber, // <--- Use readable ID for the email
+            orderNumber: result.order.orderNumber,
             subtotal: result.subtotal,
             shippingCost: result.shippingCost,
             total: Number(result.order.totalAmount),
@@ -168,33 +170,24 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         });
 
         if (body.shippingAddress.email) {
-            sendEmail(body.shippingAddress.email, "Order Confirmation - Gajitto", emailHtml);
+            sendEmail(body.shippingAddress.email, `Order Confirmation #${result.order.orderNumber}`, emailHtml);
         }
 
         return res.status(201).json({
             success: true,
             message: "Order placed successfully",
-            orderId: result.order.id
+            orderId: result.order.id,          // Database UUID (for API calls)
+            orderNumber: result.order.orderNumber // Human ID (for display)
         });
 
     } catch (error: any) {
         console.error("Create Order Error:", error);
 
-        // --- NEW ERROR HANDLING LOGIC ---
-
-        // Check if the error comes from Zod Validation
         if (error instanceof z.ZodError) {
-            // Join all validation issues into a single readable string
-            // Example output: "Phone number is required, Invalid email address"
             const validationMessage = error.issues.map((e) => e.message).join(", ");
-
-            return res.status(400).json({
-                success: false,
-                message: validationMessage
-            });
+            return res.status(400).json({ success: false, message: validationMessage });
         }
 
-        // Handle Standard JS Errors (like "Cart is empty" or "Out of stock")
         return res.status(400).json({
             success: false,
             message: error.message || "Order failed"
@@ -202,45 +195,78 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     }
 };
 
-// POST: Cancel Order (Restocking Logic)
-export const cancelOrder = async (req: Request, res: Response) => {
+export const updateOrderStatus = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
+        const { status } = req.body;
+
+        // 1. Validate Input Status
+        const validStatuses = orderStatusEnum.enumValues;
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({
+                message: `Invalid status. Allowed: ${validStatuses.join(", ")}`
+            });
+        }
 
         await db.transaction(async (tx) => {
+            // 2. Fetch Order with Items
             const order = await tx.query.orders.findFirst({
                 where: eq(orders.id, id),
                 with: { items: true }
             });
 
             if (!order) throw new Error("Order not found");
-            if (order.status === 'cancelled') throw new Error("Order already cancelled");
-            if (order.status === 'shipped' || order.status === 'delivered') {
-                throw new Error("Cannot cancel shipped order");
+
+            // 3. Status Transition Checks
+            const currentStatus = order.status;
+            const newStatus = status;
+
+            // No-op if status is same
+            if (currentStatus === newStatus) {
+                return;
             }
 
-            // 1. Mark as Cancelled
+            // Guard: Cannot edit a Cancelled order (unless you implement complex re-stocking logic)
+            if (currentStatus === 'cancelled') {
+                throw new Error("Cannot update a cancelled order. Please create a new order.");
+            }
+
+            // Guard: Cannot cancel if already Shipped/Delivered
+            if (newStatus === 'cancelled' && (currentStatus === 'shipped' || currentStatus === 'delivered')) {
+                throw new Error("Cannot cancel an order that has already been shipped or delivered.");
+            }
+
+            // 4. Update the Status
             await tx.update(orders)
-                .set({ status: 'cancelled' })
+                .set({ status: newStatus })
                 .where(eq(orders.id, id));
 
-            // 2. Restock Items
-            for (const item of order.items) {
-                // Safety check: If variant was deleted from DB (null), we can't restock it
-                if (!item.variantId) continue;
+            // 5. CONDITIONAL LOGIC: Handle Restocking if Cancelling
+            if (newStatus === 'cancelled') {
+                for (const item of order.items) {
+                    // Safety check: If variant was deleted from DB (null), skip
+                    if (!item.variantId) continue;
 
-                await tx.update(productVariants)
-                    .set({
-                        stock: sql`${productVariants.stock} + ${item.quantity}`
-                    })
-                    .where(eq(productVariants.id, item.variantId));
+                    await tx.update(productVariants)
+                        .set({
+                            // RESTOCK: Add quantity back to inventory
+                            stock: sql`${productVariants.stock} + ${item.quantity}`
+                        })
+                        .where(eq(productVariants.id, item.variantId));
+                }
             }
         });
 
-        return res.json({ message: "Order cancelled and inventory restocked" });
+        return res.json({
+            success: true,
+            message: `Order status updated to ${status}` + (status === 'cancelled' ? " and inventory restocked." : ".")
+        });
 
     } catch (error: any) {
-        return res.status(400).json({ message: error.message });
+        return res.status(400).json({
+            success: false,
+            message: error.message || "Failed to update order status"
+        });
     }
 };
 
@@ -278,5 +304,120 @@ export const getUserOrders = async (req: AuthRequest, res: Response) => {
             success: false,
             message: "Failed to fetch orders"
         });
+    }
+};
+
+
+
+
+
+
+export const createAdminOrder = async (req: AdminAuthRequest, res: Response) => {
+    try {
+        // 1. Validate Input
+        const body = createAdminOrderSchema.parse(req.body);
+
+        const result = await db.transaction(async (tx) => {
+
+            // A. Fetch Product Details for the requested items
+            // We need prices and stock validation
+            const variantIds = body.items.map(i => i.variantId);
+
+            const productsData = await tx
+                .select({
+                    productId: products.id,
+                    variantId: productVariants.id,
+                    price: productVariants.price,
+                    stock: productVariants.stock,
+                    productName: products.title,
+                    variantName: productVariants.title
+                })
+                .from(productVariants)
+                .innerJoin(products, eq(productVariants.productId, products.id))
+                .where(inArray(productVariants.id, variantIds));
+
+            // B. Calculate Totals & Validate Stock
+            let subtotal = 0;
+            const orderItemsData = [];
+
+            for (const reqItem of body.items) {
+                const product = productsData.find(p => p.variantId === reqItem.variantId);
+
+                if (!product) throw new Error(`Invalid Product Variant ID: ${reqItem.variantId}`);
+
+                if ((product.stock || 0) < reqItem.quantity) {
+                    throw new Error(`Insufficient stock for ${product.productName}`);
+                }
+
+                const lineTotal = Number(product.price) * reqItem.quantity;
+                subtotal += lineTotal;
+
+                // Prepare Item Payload
+                orderItemsData.push({
+                    variantId: product.variantId,
+                    productId: product.productId, // You might need to select this above if your schema needs it
+                    name: `${product.productName} - ${product.variantName}`,
+                    quantity: reqItem.quantity,
+                    priceAtPurchase: product.price.toString()
+                });
+            }
+
+            // Apply manual discount if any
+            const finalTotal = subtotal - (body.discount || 0);
+
+            // C. Generate Order Number
+            const orderNumber = await generateUniqueOrderNumber(tx);
+
+            // D. Create Order Record
+            const [newOrder] = await tx.insert(orders).values({
+                orderNumber: orderNumber,
+                source: 'offline', // <--- MARK AS OFFLINE
+                customerId: body.customerId || null, // Nullable
+
+                // For offline, we might construct a dummy address or leave null
+                shippingAddress: body.customerDetails ? {
+                    fullName: body.customerDetails.name || "Walk-in Customer",
+                    phone: body.customerDetails.phone || "",
+                    street: "Counter Sale",
+                    city: "Dhaka"
+                } : null,
+
+                totalAmount: finalTotal.toString(),
+                status: body.status,        // e.g., 'delivered'
+                paymentStatus: body.paymentStatus, // e.g., 'paid'
+                paymentMethod: body.paymentMethod,
+
+                createdAt: new Date(),
+            }).returning();
+
+            // E. Insert Order Items
+            await tx.insert(orderItems).values(
+                orderItemsData.map(item => ({
+                    ...item,
+                    orderId: newOrder.id
+                }))
+            );
+
+            // F. Deduct Stock
+            for (const item of body.items) {
+                await tx
+                    .update(productVariants)
+                    .set({
+                        stock: sql`${productVariants.stock} - ${item.quantity}`
+                    })
+                    .where(eq(productVariants.id, item.variantId));
+            }
+
+            return newOrder;
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Offline order created successfully",
+            order: result
+        });
+
+    } catch (error: any) {
+        return res.status(400).json({ success: false, message: error.message });
     }
 };

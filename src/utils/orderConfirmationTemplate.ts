@@ -15,9 +15,6 @@ export const getOrderConfirmationEmail = (order: any) => {
       <td style="padding: 16px 0; border-bottom: 1px solid ${THEME.border};">
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td width="60" valign="top">
-              <img src="${item.image}" alt="${item.name}" width="60" height="60" style="border-radius: 8px; object-fit: cover; background-color: #333;" />
-            </td>
             <td style="padding-left: 16px; vertical-align: middle;">
               <p style="margin: 0; color: ${THEME.text}; font-size: 14px; font-weight: 600;">${item.name}</p>
               <p style="margin: 4px 0 0; color: ${THEME.textMuted}; font-size: 12px;">${item.variantName || 'Standard'}</p>
