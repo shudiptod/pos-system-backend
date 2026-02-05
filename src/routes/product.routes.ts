@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
 import { createCategory, getCategories, getCategoryBySlug, getRootCategories } from "../controllers/category.controller";
-import { createProduct, deleteProduct, getFeaturedProducts, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
+import { createProduct, deleteProduct, getAllProducts, getFeaturedProducts, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
 import { addVariantToProduct, deleteVariant, deleteVariants, updateVariant } from "../controllers/variant.controller";
 
 const router = Router();
 
+// get all products from db
+router.get("/all", getAllProducts as any);
 
 router.post(
     "/categories",

@@ -514,3 +514,21 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
 };
 
 
+//  get all products regardless of the category or filters
+export const getAllProducts = async (req: Request, res: Response) => {
+  try {
+    // only get updatedat, slug and id
+    const data = await db
+      .select(
+        { id: products.id, slug: products.slug, updatedAt: products.updatedAt }
+      )
+      .from(products)
+      .orderBy(desc(products.updatedAt));
+
+    res.json({ success: true, data });
+
+  } catch (error: any) {
+    console.error("Get All Products Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
