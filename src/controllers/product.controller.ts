@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { db } from "../db";
-import { eq, and, ilike, gte, lte, desc, asc, sql, inArray, or, not } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, sql, inArray, or, not } from "drizzle-orm";
 import { z } from "zod";
 import { AuthRequest } from "../middleware/auth";
 
@@ -108,7 +108,6 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
         description: data.description,
         categoryId: data.categoryId,
         slug: data.slug,
-        isPublished: data.isPublished ?? true,
         createdByAdminId: user.id,
         updatedByAdminId: user.id,
       }).returning();
@@ -124,6 +123,8 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
           video: v.video,
           sku: v.sku,
           options: v.options,
+          isFeatured: v.isFeatured || false,
+          isPublished: v.isPublished !== undefined ? v.isPublished : true,
         }));
 
         const newVariants = await tx.insert(productVariants).values(rows).returning();
@@ -198,7 +199,7 @@ export const getProducts = async (req: Request, res: Response) => {
     const offset = (pageNum - 1) * limitNum;
 
     // --- Build Conditions ---
-    const whereConditions = [eq(products.isPublished, true)];
+    const whereConditions = [];
 
     // 1. RECURSIVE CATEGORY FILTER
     if (category) {
@@ -284,6 +285,7 @@ export const getProducts = async (req: Request, res: Response) => {
           categoryName: categories.name,
           categorySlug: categories.slug,
           createdAt: products.createdAt,
+          isPublished: productVariants.isPublished,
         })
         .from(productVariants)
         .innerJoin(products, eq(products.id, productVariants.productId))
@@ -314,7 +316,7 @@ export const getProducts = async (req: Request, res: Response) => {
 
       // Combined title for convenience if needed
       fullTitle: item.variantTitle ? `${item.productTitle} - ${item.variantTitle}` : item.productTitle,
-
+      price: item.price,
       slug: item.slug,
       minPrice: item.price,
       maxPrice: item.price,
@@ -325,6 +327,7 @@ export const getProducts = async (req: Request, res: Response) => {
       categoryName: item.categoryName,
       categorySlug: item.categorySlug,
       createdAt: item.createdAt,
+      isPublished: item.isPublished,
     }));
 
     res.json({
@@ -474,7 +477,7 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
       // Join Category for the label
       .leftJoin(categories, eq(products.categoryId, categories.id))
       .where(and(
-        eq(products.isPublished, true),       // Parent must be published
+        eq(productVariants.isPublished, true),       // Parent must be published
         eq(productVariants.isFeatured, true)  // Variant must be featured
       ))
       // You might want to order by recently added, or add a 'featuredOrder' column later
@@ -509,3 +512,5 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+

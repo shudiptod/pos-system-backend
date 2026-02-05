@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
 import { createCategory, getCategories, getCategoryBySlug, getRootCategories } from "../controllers/category.controller";
-import { createProduct, getFeaturedProducts, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
-import { addVariantToProduct, deleteVariant, updateVariant } from "../controllers/variant.controller";
+import { createProduct, deleteProduct, getFeaturedProducts, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
+import { addVariantToProduct, deleteVariant, deleteVariants, updateVariant } from "../controllers/variant.controller";
 
 const router = Router();
 
@@ -33,7 +33,7 @@ router.patch("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"])
 
 // delete product 
 router.delete("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    //   deleteProduct as any
+    deleteProduct as any
 );
 
 // add new variant
@@ -48,6 +48,17 @@ router.patch("/variants/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", 
 
 // get all products
 router.get("/", getProducts as any);
+
+
+
+// delete multiple products and variants
+// delete variant
+router.delete(
+    "/variants",
+    authenticateJWT as any,
+    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
+    deleteVariants as any
+);
 
 
 // delete variant

@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import { db } from "../db";
 import { createVariantSchema, productVariants, updateVariantSchema } from "../models/productVariant.model";
-import { eq, or } from "drizzle-orm";
+import { eq, inArray, or, sql } from "drizzle-orm";
 import { AuthRequest } from "@/middleware/auth";
-import { products } from "../models";
+import { deleteProductsSchema, products } from "../models";
+import z from "zod";
 
 export const updateVariant = async (req: Request, res: Response) => {
   try {
@@ -151,3 +152,65 @@ export const deleteVariant = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 }
+
+
+export const deleteVariants = async (req: Request, res: Response) => {
+  try {
+
+    const payload = deleteProductsSchema.parse(req.body);
+
+    if (payload.length === 0) {
+      return res.status(400).json({ success: false, message: "No items selected" });
+    }
+
+    const variantIdsToDelete = payload.map((p) => p.variantId);
+
+    // We collect unique Product IDs to check for cleanup later
+    const touchedProductIds = [...new Set(payload.map((p) => p.productId))];
+
+    // 2. Perform Deletion in a Transaction
+    await db.transaction(async (tx) => {
+      // A. Delete the requested variants
+      await tx.delete(productVariants).where(
+        inArray(productVariants.id, variantIdsToDelete)
+      );
+
+      // B. Cleanup: Check if parent products are now empty (Orphan check)
+      // This is optional but keeps your DB clean.
+      for (const productId of touchedProductIds) {
+        // Count remaining variants for this product
+        const [result] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(productVariants)
+          .where(eq(productVariants.productId, productId));
+
+        // If count is 0, delete the parent product
+        if (Number(result.count) === 0) {
+          await tx.delete(products).where(eq(products.id, productId));
+          console.log(`Auto-deleted orphan product: ${productId}`);
+        }
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully deleted ${variantIdsToDelete.length} item(s)`,
+    });
+
+  } catch (error) {
+    console.error("Delete error:", error);
+
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid data format",
+        errors: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};

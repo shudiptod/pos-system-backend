@@ -113,6 +113,20 @@
       "when": 1770123930066,
       "tag": "0015_thin_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1770307036476,
+      "tag": "0016_sparkling_king_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1770308516147,
+      "tag": "0017_simple_hercules",
+      "breakpoints": true
     }
   ]
 }
