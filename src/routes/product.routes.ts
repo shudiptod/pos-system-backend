@@ -24,6 +24,40 @@ router.get("/categories/:slug", getCategoryBySlug);
 
 router.get("/featured", getFeaturedProducts);
 
+// add new variant
+router.post(
+    "/variants",
+    authenticateJWT as any,
+    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
+    addVariantToProduct as any
+);
+
+
+// delete multiple products and variants
+// delete variant
+router.delete(
+    "/variants",
+    authenticateJWT as any,
+    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
+    deleteVariants as any
+);
+
+
+
+// delete variant
+router.delete(
+    "/variants/:id",
+    authenticateJWT as any,
+    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
+    deleteVariant as any
+);
+
+
+
+// update product variant
+router.patch("/variants/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, updateVariant);
+
+
 router.post("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createProduct as any);
 
 router.get("/:id", getProductById);
@@ -38,36 +72,12 @@ router.delete("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]
     deleteProduct as any
 );
 
-// add new variant
-router.post(
-    "/variants",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    addVariantToProduct as any
-);
-// update product variant
-router.patch("/variants/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, updateVariant);
+
 
 // get all products
 router.get("/", getProducts as any);
 
 
 
-// delete multiple products and variants
-// delete variant
-router.delete(
-    "/variants",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    deleteVariants as any
-);
 
-
-// delete variant
-router.delete(
-    "/variants/:id",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    deleteVariant as any
-);
 export default router;
