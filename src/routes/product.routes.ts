@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
-import { createCategory, getCategories, getCategoryBySlug, getRootCategories } from "../controllers/category.controller";
+import { createCategory, deleteCategory, getCategories, getCategoryBySlug, getRootCategories, updateCategory } from "../controllers/category.controller";
 import { createProduct, deleteProduct, getAllProducts, getFeaturedProducts, getProductById, getProductBySlug, getProducts, updateProduct } from "../controllers/product.controller";
 import { addVariantToProduct, deleteVariant, deleteVariants, updateVariant } from "../controllers/variant.controller";
 
@@ -23,6 +23,25 @@ router.get("/roots", getRootCategories);
 router.get("/categories/:slug", getCategoryBySlug);
 
 router.get("/featured", getFeaturedProducts);
+
+// update category
+
+router.patch(
+    "/categories/:id",
+    authenticateJWT as any,
+    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
+    updateCategory as any
+);
+
+// delete category
+
+router.delete(
+    "/categories/:id",
+    authenticateJWT as any,
+    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
+    deleteCategory as any
+);
+
 
 // add new variant
 router.post(

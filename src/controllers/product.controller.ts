@@ -189,7 +189,7 @@ export const getProducts = async (req: Request, res: Response) => {
       minPrice,
       maxPrice,
       page = "1",
-      limit = "12",
+      limit = "12", // "none" for no limit
       sort = "newest",
       ...dynamicFilters
     } = req.query;

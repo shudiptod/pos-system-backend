@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { db } from "../db";
-import { categories, createCategorySchema } from "../models/category.model";
+import { categories, createCategorySchema, updateCategorySchema } from "../models/category.model";
 import { products } from "../models/product.model";
 import { productVariants } from "../models/productVariant.model";
 import { eq, inArray, min, max, and, isNull } from "drizzle-orm";
@@ -168,5 +168,65 @@ export const getCategoryBySlug = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching category:', error);
     res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+
+// --- UPDATE CATEGORY ---
+
+export const updateCategory = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+    const { id } = req.params;
+
+    // 1. Prepare Data
+    const parsed = updateCategorySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ errors: parsed.error.format() });
+    }
+    const data = parsed.data;
+
+    // 2. Update Database
+    const [updated] = await db
+      .update(categories)
+      .set(data)
+      .where(eq(categories.id, id))
+      .returning();
+
+    if (!updated) return res.status(404).json({ message: "Category not found" });
+
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+// --- DELETE CATEGORY ---
+export const deleteCategory = async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+    const { id } = req.params;
+
+    // Optional: Check if category has products or sub-categories before allowing deletion
+    const hasProducts = await db.select().from(products).where(eq(products.categoryId, id)).limit(1);
+    const hasChildren = await db.select().from(categories).where(eq(categories.parentId, id)).limit(1);
+
+    if (hasProducts.length > 0 || hasChildren.length > 0) {
+      // update the products to set categoryId to null 
+      await db.update(products).set({ categoryId: null }).where(eq(products.categoryId, id));
+      // update the child categories to set parentId to null
+      await db.update(categories).set({ parentId: null }).where(eq(categories.parentId, id));
+    }
+
+    await db.delete(categories).where(eq(categories.id, id));
+
+    res.json({ success: true, message: "Category deleted" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
