@@ -15,7 +15,7 @@ import customerRoutes from "./routes/create.customer.router";
 import adminRoutes from "./routes/admin.router";
 import productRoutes from "./routes/product.routes";
 import cartRoutes from "./routes/cart.route";
-import uploadRoutes from "./routes/upload.router";
+import uploadRoutes from "./routes/supabase.router";
 import orderRoutes from "./routes/order.router";
 import websiteSettingsRoutes from "./routes/websiteSettings.router";
 import storeLocationRoutes from "./routes/storeLocation.router";

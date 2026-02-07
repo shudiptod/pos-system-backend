@@ -2,12 +2,21 @@
 
 
 import { authenticateCustomer } from "../middleware/customerAuth";
-import { uploadFile } from "../controllers/upload.controller";
+import { getStorageLibrary, uploadFile } from "../controllers/supabase.controller";
 import { authenticateJWT, authorize } from "../middleware/auth";
 import { upload } from "../middleware/upload";
 import { Router } from "express";
 
 const router = Router();
+
+
+// get all files and folders in storage library
+router.get(
+    "/library",
+    authenticateJWT as any,
+    authorize(["ADMIN", "SUPER_ADMIN", "MANAGER"]) as any,
+    getStorageLibrary as any
+);
 
 // POST /api/upload
 router.post(
