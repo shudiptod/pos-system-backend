@@ -24,13 +24,35 @@ const allowedOrigins = [
   "http://localhost:3000",                  // Local Web
   "https://ecommerce-frontend-99o2zymab-shudiptods-projects.vercel.app",
   "https://www.gajittobd.com",    // Live Web
+  "https://gajittobd.com",    // Live Web
   "https://admin.gajittobd.com"
   // Add other web domains here if needed
 ];
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(helmet());
+app.use(helmet({
+  // This allows the browser to share resources across origins
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+
+  // This prevents the CSP from blocking the frontend-to-backend connection
+  contentSecurityPolicy: {
+    directives: {
+      "default-src": ["'self'"],
+      "connect-src": [
+        "'self'",
+        "https://www.gajittobd.com",
+        "https://gajittobd.com",
+        "https://admin.gajittobd.com",
+        "https://ecommerce-backend-production-b59c.up.railway.app" // Add your actual Railway URL here
+      ],
+      "script-src": ["'self'"],
+      "style-src": ["'self'", "'unsafe-inline'", "https:"],
+      "img-src": ["'self'", "data:", "https:"],
+      "font-src": ["'self'", "https:", "data:"],
+    },
+  },
+}));
 app.use(cors({
   origin: (origin, callback) => {
     // 1. Allow Mobile Apps & Tools (Postman)
