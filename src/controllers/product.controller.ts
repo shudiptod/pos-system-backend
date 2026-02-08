@@ -183,7 +183,7 @@ export const getProducts = async (req: Request, res: Response) => {
       minPrice,
       maxPrice,
       page = "1",
-      limit = "12", // "none" for no limit
+      limit = "12",
       sort = "newest",
       ...dynamicFilters
     } = req.query;
@@ -214,7 +214,6 @@ export const getProducts = async (req: Request, res: Response) => {
         `);
 
         const categoryIds = recursiveResult.map((row: any) => row.id);
-
         if (categoryIds.length > 0) {
           whereConditions.push(inArray(products.categoryId, categoryIds));
         } else {
@@ -228,7 +227,7 @@ export const getProducts = async (req: Request, res: Response) => {
     // 2. SEARCH FILTER
     if (search) {
       whereConditions.push(
-        sql`(${products.title} ILIKE ${`%${search}%`} OR ${productVariants.title} ILIKE ${`%${search}%`} OR ${productVariants.sku} ILIKE ${`%${search}%`})`
+        sql`(${products.title} ILIKE ${`%${search}%`} OR ${productVariants.title} ILIKE ${`%${search}%`} OR ${productVariants.sku} ILIKE ${`%${search}%`}`
       );
     }
 
@@ -239,14 +238,9 @@ export const getProducts = async (req: Request, res: Response) => {
     // 4. DYNAMIC FILTERS
     Object.entries(dynamicFilters).forEach(([key, value]) => {
       if (!value) return;
-      let values: string[] = [];
-      if (Array.isArray(value)) values = value as string[];
-      else if (typeof value === 'string') values = value.split(',');
-
+      let values: string[] = Array.isArray(value) ? (value as string[]) : (value as string).split(',');
       if (values.length > 0) {
-        whereConditions.push(
-          inArray(sql<string>`${productVariants.options}->>${key}`, values)
-        );
+        whereConditions.push(inArray(sql<string>`${productVariants.options}->>${key}`, values));
       }
     });
 
@@ -263,15 +257,18 @@ export const getProducts = async (req: Request, res: Response) => {
     const [data, totalCountResult] = await Promise.all([
       db
         .select({
-          // Parent Info
           productId: products.id,
           productTitle: products.title,
           slug: products.slug,
-
-          // Variant Info
           id: productVariants.id,
-          variantTitle: productVariants.title, // <--- Fetching variant title
+          variantTitle: productVariants.title,
           price: productVariants.price,
+
+          // Discount Fields
+          discountStatus: productVariants.discountStatus,
+          discountType: productVariants.discountType,
+          discountValue: productVariants.discountValue,
+
           stock: productVariants.stock,
           thumbnail: sql<string>`${productVariants.images}[1]`,
           options: productVariants.options,
@@ -289,7 +286,6 @@ export const getProducts = async (req: Request, res: Response) => {
         .limit(limitNum)
         .offset(offset),
 
-      // Count Query
       db
         .select({ count: sql<number>`count(${productVariants.id})` })
         .from(productVariants)
@@ -300,29 +296,46 @@ export const getProducts = async (req: Request, res: Response) => {
 
     const total = Number(totalCountResult[0]?.count || 0);
 
-    // Transform Data
-    const formattedData = data.map(item => ({
-      id: item.productId,
-      variantId: item.id,
+    // --- Transform Data ---
+    const formattedData = data.map(item => {
+      const basePrice = Number(item.price);
+      const discValue = Number(item.discountValue || 0);
+      let salePrice = basePrice;
 
-      title: item.productTitle,       // Main Product Name (e.g. "iPhone 15")
-      variantTitle: item.variantTitle, // Specific Variant Name (e.g. "Black")
+      // Only calculate sale price if discount is active and value > 0
+      if (item.discountStatus && discValue > 0) {
+        if (item.discountType === 'PERCENTAGE') {
+          salePrice = basePrice - (basePrice * (discValue / 100));
+        } else {
+          salePrice = Math.max(0, basePrice - discValue);
+        }
+      }
 
-      // Combined title for convenience if needed
-      fullTitle: item.variantTitle ? `${item.productTitle} - ${item.variantTitle}` : item.productTitle,
-      price: item.price,
-      slug: item.slug,
-      minPrice: item.price,
-      maxPrice: item.price,
-      stock: item.stock,
-      thumbnail: item.thumbnail,
-      options: [item.options],
-      isFeatured: item.isFeatured,
-      categoryName: item.categoryName,
-      categorySlug: item.categorySlug,
-      createdAt: item.createdAt,
-      isPublished: item.isPublished,
-    }));
+      return {
+        id: item.productId,
+        variantId: item.id,
+        title: item.productTitle,
+        variantTitle: item.variantTitle,
+        fullTitle: item.variantTitle ? `${item.productTitle} - ${item.variantTitle}` : item.productTitle,
+
+        // Pricing Cleaned Up
+        price: basePrice,
+        salePrice: Number(salePrice.toFixed(2)),
+        discountStatus: item.discountStatus,
+        discountType: item.discountType,
+        discountValue: discValue,
+
+        slug: item.slug,
+        stock: item.stock,
+        thumbnail: item.thumbnail,
+        options: [item.options],
+        isFeatured: item.isFeatured,
+        categoryName: item.categoryName,
+        categorySlug: item.categorySlug,
+        createdAt: item.createdAt,
+        isPublished: item.isPublished,
+      };
+    });
 
     res.json({
       success: true,
