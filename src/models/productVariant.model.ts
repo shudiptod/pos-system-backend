@@ -19,6 +19,7 @@ export const productVariants = pgTable('product_variants', {
 
   // --- NEW DISCOUNT FIELDS ---
   // Stores 'PERCENTAGE' or 'FIXED'
+  discountStatus: boolean('discount_status').default(false),
   discountType: text('discount_type').$type<'PERCENTAGE' | 'FIXED'>().default('FIXED'),
 
   // Stores the amount (e.g., 10 for 10% or 10 for $10)

@@ -127,6 +127,20 @@
       "when": 1770308516147,
       "tag": "0017_simple_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1770557250579,
+      "tag": "0018_graceful_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1770557941277,
+      "tag": "0019_far_warbound",
+      "breakpoints": true
     }
   ]
 }
