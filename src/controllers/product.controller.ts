@@ -16,16 +16,7 @@ import { generateSlug } from "../utils/slugify";
 
 // Schema that accepts either explicit 'variants' OR flat fields (for single products)
 const incomingPayloadSchema = createProductSchema.extend({
-  // Option A: Explicit Variants Array
   variants: z.array(createVariantSchema).optional(),
-
-  // Option B: Flat fields (for single products without variants)
-  barcode: z.string().optional(),
-  price: z.number().optional(),
-  stock: z.number().optional(),
-  images: z.array(z.string().url()).optional(),
-  video: z.string().url().optional(),
-  sku: z.string().optional(),
 });
 
 export const createProduct = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -125,6 +116,9 @@ export const createProduct = async (req: AuthRequest, res: Response, next: NextF
           options: v.options,
           isFeatured: v.isFeatured || false,
           isPublished: v.isPublished !== undefined ? v.isPublished : true,
+          discountStatus: v.discountStatus || false,
+          discountType: v.discountType || 'FIXED',
+          discountValue: String(v.discountValue || 0),
         }));
 
         const newVariants = await tx.insert(productVariants).values(rows).returning();

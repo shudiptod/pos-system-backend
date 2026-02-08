@@ -44,7 +44,8 @@ export const createVariantSchema = z.object({
   price: z.number().min(0, "Price cannot be negative"),
   stock: z.number().int().min(0),
 
-  // --- New Discount Validation ---
+
+  discountStatus: z.boolean().optional().default(false),
   discountType: z.enum(['PERCENTAGE', 'FIXED']).optional().default('FIXED'),
   discountValue: z.number().min(0, "Discount cannot be negative").optional().default(0),
 
