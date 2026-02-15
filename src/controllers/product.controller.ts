@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { db } from "../db";
-import { eq, and, gte, lte, desc, asc, sql, inArray, or, not } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, sql, inArray, or, not, SQL } from "drizzle-orm";
 import { z } from "zod";
 import { AuthRequest } from "../middleware/auth";
 
@@ -175,6 +175,8 @@ export const getProductById = async (req: Request, res: Response) => {
 // 3. GET ALL PRODUCTS (Catalog List)
 // ---------------------------------------------------------
 
+
+
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const {
@@ -185,6 +187,7 @@ export const getProducts = async (req: Request, res: Response) => {
       page = "1",
       limit = "12",
       sort = "newest",
+      availability = null,
       ...dynamicFilters
     } = req.query;
 
@@ -192,10 +195,9 @@ export const getProducts = async (req: Request, res: Response) => {
     const limitNum = Math.min(Math.max(1, Number(limit)), 100);
     const offset = (pageNum - 1) * limitNum;
 
-    // --- Build Conditions ---
-    const whereConditions = [];
+    // --- 1. Global Conditions (Category, Search, Price) ---
+    const globalConditions: SQL[] = [sql`1=1`];
 
-    // 1. RECURSIVE CATEGORY FILTER
     if (category) {
       const [rootCategory] = await db
         .select({ id: categories.id })
@@ -212,147 +214,166 @@ export const getProducts = async (req: Request, res: Response) => {
           )
           SELECT id FROM category_tree
         `);
-
         const categoryIds = recursiveResult.map((row: any) => row.id);
-        if (categoryIds.length > 0) {
-          whereConditions.push(inArray(products.categoryId, categoryIds));
-        } else {
-          whereConditions.push(eq(products.categoryId, rootCategory.id));
-        }
+        globalConditions.push(inArray(products.categoryId, categoryIds));
       } else {
-        return res.json({ success: true, data: [], pagination: { page: pageNum, limit: limitNum, total: 0, totalPages: 0 } });
+        // Return empty result immediately if category slug is invalid
+        return res.json({ success: true, data: [], facets: [], pagination: { total: 0, totalPages: 0 } });
       }
     }
 
-    // 2. SEARCH FILTER
     if (search) {
-      whereConditions.push(
-        sql`(${products.title} ILIKE ${`%${search}%`} OR ${productVariants.title} ILIKE ${`%${search}%`} OR ${productVariants.sku} ILIKE ${`%${search}%`}`
-      );
+      const pattern = `%${search}%`;
+      globalConditions.push(sql`(${products.title} ILIKE ${pattern} OR ${productVariants.title} ILIKE ${pattern})`);
     }
 
-    // 3. PRICE FILTERS
-    if (minPrice) whereConditions.push(gte(productVariants.price, minPrice as string));
-    if (maxPrice) whereConditions.push(lte(productVariants.price, maxPrice as string));
+    // Fixed Numeric Casting for Price Filters
+    if (minPrice) {
+      globalConditions.push(sql`CAST(${productVariants.price} AS NUMERIC) >= ${Number(minPrice)}`);
+    }
+    if (maxPrice) {
+      globalConditions.push(sql`CAST(${productVariants.price} AS NUMERIC) <= ${Number(maxPrice)}`);
+    }
+    if (availability === "in-stock") {
+      globalConditions.push(gte(productVariants.stock, 1));
+    }
 
-    // 4. DYNAMIC FILTERS
-    Object.entries(dynamicFilters).forEach(([key, value]) => {
-      if (!value) return;
-      let values: string[] = Array.isArray(value) ? (value as string[]) : (value as string).split(',');
+    // --- 2. Dynamic Filter Logic (Using Pipe Delimiter) ---
+    const filterEntries = Object.entries(dynamicFilters).filter(([_, v]) => !!v);
+    const allConditions = [...globalConditions];
+
+    filterEntries.forEach(([key, value]) => {
+      const stringVal = String(value);
+      // Split by Pipe to support commas within product names
+      const values = stringVal.split("|").map(v => v.trim()).filter(v => v !== "");
+
       if (values.length > 0) {
-        whereConditions.push(inArray(sql<string>`${productVariants.options}->>${key}`, values));
+        const likeConditions = values.map(v =>
+          sql`${productVariants.options}->>${key} ILIKE ${`%${v}%`}`
+        );
+        allConditions.push(sql`(${sql.join(likeConditions, sql` OR `)})`);
       }
     });
 
-    // --- Sorting Strategy ---
+    // Sorting Logic
     const stockSort = sql`CASE WHEN ${productVariants.stock} > 0 THEN 1 ELSE 0 END`;
-    let orderByClause: any = [desc(stockSort), desc(products.createdAt)];
+    let orderBy: any[] = [desc(stockSort), desc(products.createdAt)];
+    if (sort === "price_asc") orderBy = [desc(stockSort), asc(productVariants.price)];
+    if (sort === "price_desc") orderBy = [desc(stockSort), desc(productVariants.price)];
 
-    if (sort === "price_asc") orderByClause = [desc(stockSort), asc(productVariants.price)];
-    if (sort === "price_desc") orderByClause = [desc(stockSort), desc(productVariants.price)];
-    if (sort === "name_asc") orderByClause = [desc(stockSort), asc(products.title)];
-    if (sort === "oldest") orderByClause = [desc(stockSort), asc(products.createdAt)];
-
-    // --- EXECUTE QUERY ---
-    const [data, totalCountResult] = await Promise.all([
+    // --- 3. Parallel Database Execution ---
+    const [productData, totalCountResult, facetsResult] = await Promise.all([
+      // A. Fetch Products
       db
         .select({
           productId: products.id,
           productTitle: products.title,
           slug: products.slug,
-          id: productVariants.id,
+          variantId: productVariants.id,
           variantTitle: productVariants.title,
           price: productVariants.price,
-
-          // Discount Fields
           discountStatus: productVariants.discountStatus,
           discountType: productVariants.discountType,
           discountValue: productVariants.discountValue,
-
           stock: productVariants.stock,
           thumbnail: sql<string>`${productVariants.images}[1]`,
           options: productVariants.options,
-          isFeatured: productVariants.isFeatured,
           categoryName: categories.name,
           categorySlug: categories.slug,
-          createdAt: products.createdAt,
-          isPublished: productVariants.isPublished,
         })
         .from(productVariants)
         .innerJoin(products, eq(products.id, productVariants.productId))
         .leftJoin(categories, eq(products.categoryId, categories.id))
-        .where(and(...whereConditions))
-        .orderBy(...orderByClause)
+        .where(and(...allConditions))
+        .orderBy(...orderBy)
         .limit(limitNum)
         .offset(offset),
 
+      // B. Total Count for Pagination
       db
-        .select({ count: sql<number>`count(${productVariants.id})` })
+        .select({ count: sql<number>`count(*)` })
         .from(productVariants)
         .innerJoin(products, eq(products.id, productVariants.productId))
-        .leftJoin(categories, eq(products.categoryId, categories.id))
-        .where(and(...whereConditions)),
+        .where(and(...allConditions)),
+
+      // C. Multi-select Facets with Alias Fix and Pipe Splitting
+      db.execute(sql`
+  WITH base_products AS (
+    SELECT 
+      ${productVariants.id} as id, -- Explicitly select the variant ID
+      ${productVariants.options} as options 
+    FROM ${productVariants} 
+    INNER JOIN ${products} ON ${products.id} = ${productVariants.productId}
+    WHERE ${and(...globalConditions)}
+  ),
+  unpacked_options AS (
+    SELECT DISTINCT key, trim(unnest(string_to_array(value, ','))) as split_value
+    FROM base_products, jsonb_each_text(options)
+  )
+  SELECT 
+    key as "id", 
+    key as "title",
+    jsonb_agg(DISTINCT jsonb_build_object(
+      'label', split_value, 
+      'value', split_value,
+      'count', (
+        SELECT count(DISTINCT bp2.id)::int 
+        FROM base_products bp2
+        WHERE bp2.options->>key ILIKE '%' || split_value || '%'
+        ${filterEntries.length > 0 ? sql`AND ${and(...filterEntries.map(([k, v]) => {
+        if (!v) return sql`TRUE`;
+        const sVal = String(v);
+        const vals = sVal.split("|").map(item => item.trim()).filter(i => i !== "");
+        // Match current key to skip filter for own group (multi-select logic)
+        return sql`(${k} = key OR ${sql.raw(`bp2.options->>'${k}'`)} ILIKE ANY(ARRAY[${sql.join(vals.map(val => sql`'%' || ${val} || '%'`), sql`, `)}]))`;
+      }))}` : sql``}
+      )
+    )) as "options"
+  FROM unpacked_options
+  GROUP BY key
+`)
     ]);
 
+    // --- 4. Result Transformation ---
     const total = Number(totalCountResult[0]?.count || 0);
 
-    // --- Transform Data ---
-    const formattedData = data.map(item => {
+    const formattedProducts = productData.map((item) => {
       const basePrice = Number(item.price);
       const discValue = Number(item.discountValue || 0);
       let salePrice = basePrice;
 
-      // Only calculate sale price if discount is active and value > 0
       if (item.discountStatus && discValue > 0) {
-        if (item.discountType === 'PERCENTAGE') {
-          salePrice = basePrice - (basePrice * (discValue / 100));
-        } else {
-          salePrice = Math.max(0, basePrice - discValue);
-        }
+        salePrice = item.discountType === "PERCENTAGE"
+          ? basePrice * (1 - discValue / 100)
+          : basePrice - discValue;
       }
 
       return {
-        id: item.productId,
-        variantId: item.id,
-        title: item.productTitle,
-        variantTitle: item.variantTitle,
-        fullTitle: item.variantTitle ? `${item.productTitle} - ${item.variantTitle}` : item.productTitle,
-
-        // Pricing Cleaned Up
+        ...item,
         price: basePrice,
-        salePrice: Number(salePrice.toFixed(2)),
-        discountStatus: item.discountStatus,
-        discountType: item.discountType,
-        discountValue: discValue,
-
-        slug: item.slug,
-        stock: item.stock,
-        thumbnail: item.thumbnail,
-        options: [item.options],
-        isFeatured: item.isFeatured,
-        categoryName: item.categoryName,
-        categorySlug: item.categorySlug,
-        createdAt: item.createdAt,
-        isPublished: item.isPublished,
+        salePrice: Math.round(salePrice),
+        fullTitle: item.variantTitle === "Default" ? item.productTitle : `${item.productTitle} - ${item.variantTitle}`
       };
     });
 
     res.json({
       success: true,
-      data: formattedData,
+      data: formattedProducts,
+      facets: facetsResult || [],
       pagination: {
-        page: pageNum,
-        limit: limitNum,
         total,
         totalPages: Math.ceil(total / limitNum),
+        page: pageNum,
+        limit: limitNum
       },
     });
 
   } catch (error: any) {
-    console.error("Get Products Error:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch products", error: error.message });
+    console.error("Controller Error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 // ---------------------------------------------------------
 // 4. GET SINGLE PRODUCT by slug (With All Variants)
