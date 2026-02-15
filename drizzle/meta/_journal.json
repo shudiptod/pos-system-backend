@@ -141,6 +141,20 @@
       "when": 1770557941277,
       "tag": "0019_far_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1771167186031,
+      "tag": "0020_black_romulus",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1771167272792,
+      "tag": "0021_early_ken_ellis",
+      "breakpoints": true
     }
   ]
 }

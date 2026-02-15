@@ -82,8 +82,9 @@ export const getCart = async (req: AuthRequest, res: Response) => {
 
     // Calculate Subtotal
     const subtotal = items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
-    res.json({ cartId, items, subtotal });
+    res.json({ cartId, items, subtotal, totalQuantity });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to load cart" });
