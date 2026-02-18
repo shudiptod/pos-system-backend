@@ -1,10 +1,15 @@
+import path from 'path';
+
+// This ensures it works on your Mac and on Railway
+const logDir = path.join(process.cwd(), 'logs');
+
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 
 const { combine, timestamp, json, errors } = winston.format;
 
 const transport = new DailyRotateFile({
-    dirname: '/logs',
+    dirname: logDir,
     filename: 'gajitto-%DATE%.log',
     datePattern: 'YYYY-MM-DD',
     zippedArchive: true,

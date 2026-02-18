@@ -1,5 +1,8 @@
 
 import express from "express";
+if (process.env.NODE_ENV === 'production') {
+  require('module-alias/register');
+}
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
