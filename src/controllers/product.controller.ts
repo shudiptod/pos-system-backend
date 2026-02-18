@@ -9,6 +9,7 @@ import { products, createProductSchema } from "../models/product.model";
 import { categories } from "../models/category.model";
 import { productVariants, createVariantSchema } from "../models/productVariant.model";
 import { generateSlug } from "../utils/slugify";
+import { logger } from "@/lib/logger";
 
 // ---------------------------------------------------------
 // 1. CREATE PRODUCT (Transaction: Parent + Variants)
@@ -533,6 +534,8 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
       categoryName: item.categoryName,
       options: [] // Not needed for homepage cards
     }));
+
+    logger.info(`Featured Products`, { data: formattedData });
 
     res.json({ success: true, data: formattedData });
 

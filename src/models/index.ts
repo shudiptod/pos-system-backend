@@ -7,3 +7,4 @@ export * from './productVariant.model';
 export * from './order.model';
 export * from './carts.model';
 export * from './cartItems.model';
+export * from './logger.model';
