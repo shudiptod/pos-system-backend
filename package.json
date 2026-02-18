@@ -17,6 +17,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "_moduleAliases": {
+    "@": "dist"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
     "bcrypt": "^6.0.0",
