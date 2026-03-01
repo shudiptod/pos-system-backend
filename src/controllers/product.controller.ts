@@ -9,7 +9,7 @@ import { products, createProductSchema } from "../models/product.model";
 import { categories } from "../models/category.model";
 import { productVariants, createVariantSchema } from "../models/productVariant.model";
 import { generateSlug } from "../utils/slugify";
-import { logger } from "@/lib/logger";
+import { logger } from "../lib/logger";
 
 // ---------------------------------------------------------
 // 1. CREATE PRODUCT (Transaction: Parent + Variants)
