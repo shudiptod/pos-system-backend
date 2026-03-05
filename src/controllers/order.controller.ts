@@ -151,42 +151,65 @@ export const createAdminOrder = async (req: AdminAuthRequest, res: Response) => 
         const body = createAdminOrderSchema.parse(req.body);
 
         const result = await db.transaction(async (tx) => {
-            const variantIds = body.items.map(i => i.variantId);
-
-            const productsData = await tx
-                .select({
-                    productId: products.id,
-                    variantId: productVariants.id,
-                    price: productVariants.price,
-                    stock: productVariants.stock,
-                    image: productVariants.images,
-                    productName: products.title,
-                    variantName: productVariants.title
-                })
-                .from(productVariants)
-                .innerJoin(products, eq(productVariants.productId, products.id))
-                .where(inArray(productVariants.id, variantIds));
+            // 1. Separate DB items from Custom items
+            const dbItems = body.items.filter(i => i.variantId);
+            const customItems = body.items.filter(i => !i.variantId);
 
             let subtotal = 0;
             const orderItemsData = [];
 
-            for (const reqItem of body.items) {
-                const product = productsData.find(p => p.variantId === reqItem.variantId);
-                if (!product) throw new Error(`Invalid Product ID: ${reqItem.variantId}`);
-                if ((product.stock || 0) < reqItem.quantity) throw new Error(`Stock out: ${product.productName}`);
+            // 2. Process DB Items (Validate Stock & Fetch Details)
+            if (dbItems.length > 0) {
+                const variantIds = dbItems.map(i => i.variantId as string);
+                const productsData = await tx
+                    .select({
+                        productId: products.id,
+                        variantId: productVariants.id,
+                        price: productVariants.price,
+                        stock: productVariants.stock,
+                        image: productVariants.images,
+                        productName: products.title,
+                        variantName: productVariants.title
+                    })
+                    .from(productVariants)
+                    .innerJoin(products, eq(productVariants.productId, products.id))
+                    .where(inArray(productVariants.id, variantIds));
 
-                subtotal += Number(product.price) * reqItem.quantity;
+                for (const reqItem of dbItems) {
+                    const product = productsData.find(p => p.variantId === reqItem.variantId);
+                    if (!product) throw new Error(`Product not found: ${reqItem.variantId}`);
 
+                    // Logic check: Only deduct stock if it's a real DB product
+                    if ((product.stock || 0) < reqItem.quantity) {
+                        throw new Error(`Stock out: ${product.productName}`);
+                    }
+
+                    subtotal += Number(product.price) * reqItem.quantity;
+                    orderItemsData.push({
+                        variantId: product.variantId,
+                        productId: product.productId,
+                        name: `${product.productName} - ${product.variantName}`,
+                        thumbnailAtPurchase: Array.isArray(product.image) ? product.image[0] : null,
+                        quantity: reqItem.quantity,
+                        priceAtPurchase: product.price.toString()
+                    });
+                }
+            }
+
+            // 3. Process Custom Items (No DB lookup, use user-provided info)
+            for (const custom of customItems) {
+                subtotal += (custom.priceAtPurchase || 0) * custom.quantity;
                 orderItemsData.push({
-                    variantId: product.variantId,
-                    productId: product.productId,
-                    name: `${product.productName} - ${product.variantName}`,
-                    thumbnailAtPurchase: Array.isArray(product.image) ? product.image[0] : null,
-                    quantity: reqItem.quantity,
-                    priceAtPurchase: product.price.toString()
+                    variantId: null, // Critical: No reference
+                    productId: null,
+                    name: custom.name, // The manually typed name from POS
+                    thumbnailAtPurchase: custom.thumbnailAtPurchase || null,
+                    quantity: custom.quantity,
+                    priceAtPurchase: (custom.priceAtPurchase || 0).toString()
                 });
             }
 
+            // 4. Create the Order
             const finalTotal = subtotal - (body.discount || 0);
             const orderNumber = await generateUniqueOrderNumber(tx);
 
@@ -195,19 +218,23 @@ export const createAdminOrder = async (req: AdminAuthRequest, res: Response) => 
                 source: body.source || 'offline',
                 customerId: body.customerId || null,
                 contactInfo: body.contactInfo,
-                shippingAddress: body.shippingAddress || null, // Optional for outlet
+                shippingAddress: body.shippingAddress || null,
                 totalAmount: finalTotal.toString(),
                 status: body.status || 'delivered',
                 paymentStatus: body.paymentStatus || 'paid',
                 paymentMethod: body.paymentMethod,
             }).returning();
 
-            await tx.insert(orderItems).values(orderItemsData.map(item => ({ ...item, orderId: newOrder.id })));
+            // 5. Insert Snapshot Items
+            await tx.insert(orderItems).values(
+                orderItemsData.map(item => ({ ...item, orderId: newOrder.id }))
+            );
 
-            for (const item of body.items) {
+            // 6. Deduct Stock ONLY for DB items
+            for (const item of dbItems) {
                 await tx.update(productVariants)
                     .set({ stock: sql`${productVariants.stock} - ${item.quantity}` })
-                    .where(eq(productVariants.id, item.variantId));
+                    .where(eq(productVariants.id, item.variantId!));
             }
 
             return newOrder;

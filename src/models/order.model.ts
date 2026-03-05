@@ -72,6 +72,17 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 // 4. ZOD SCHEMAS
 // =======================
 
+const posOrderItemSchema = z.object({
+    quantity: z.number().min(1),
+    // If variantId is present, it's a DB product. 
+    // If null, it must have a name and price.
+    variantId: z.string().uuid().optional().nullable(),
+    productId: z.string().uuid().optional().nullable(),
+    name: z.string().min(1, "Item name is required"),
+    priceAtPurchase: z.number().min(0),
+    thumbnailAtPurchase: z.string().url().optional().nullable(),
+});
+
 const contactInfoSchema = z.object({
     fullName: z.string().min(2, "Full name is required"),
     phone: z.string().min(11, "Valid phone number is required"),
@@ -100,14 +111,11 @@ export const createAdminOrderSchema = z.object({
     source: z.enum(['online', 'offline']).default('offline'),
     customerId: z.string().uuid().optional(),
     contactInfo: contactInfoSchema,
-    items: z.array(z.object({
-        variantId: z.string().uuid(),
-        quantity: z.number().min(1)
-    })).min(1),
+    items: z.array(posOrderItemSchema).min(1),
     paymentMethod: z.enum(['cod', 'cash', 'card', 'online']),
     paymentStatus: z.enum(['paid', 'unpaid']),
     status: z.enum(['delivered', 'processing', 'pending', 'confirmed']),
-    shippingAddress: addressSchema.optional(),
+    shippingAddress: addressSchema.partial().optional().nullable(),
     discount: z.number().optional(),
 });
 
