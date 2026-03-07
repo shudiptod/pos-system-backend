@@ -31,7 +31,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         const rateOutside = settings?.shippingOutsideDhaka ?? 120;
 
         // Determine Shipping Cost using city/district
-        const isDhaka = body.shippingAddress.city.trim().toLowerCase().includes("dhaka");
+        const isDhaka = body.shippingAddress.city.trim().toLowerCase().includes("dhaka city");
         const shippingCost = isDhaka ? rateInside : rateOutside;
 
         const result = await db.transaction(async (tx) => {
