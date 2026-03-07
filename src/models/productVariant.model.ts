@@ -17,7 +17,13 @@ export const productVariants = pgTable('product_variants', {
 
   price: decimal('price', { precision: 10, scale: 2 }).notNull(),
 
-  // --- NEW DISCOUNT FIELDS ---
+  // --- RETAIL & WARRANTY FIELDS (New) ---
+  // e.g., "12 Months", "Lifetime", "No Warranty"
+  warranty: text('warranty').default('No Warranty'),
+
+  // If true, the system will prompt for IMEI/Serial during checkout
+  requiresImei: boolean('requires_imei').default(false),
+
   // Stores 'PERCENTAGE' or 'FIXED'
   discountStatus: boolean('discount_status').default(false),
   discountType: text('discount_type').$type<'PERCENTAGE' | 'FIXED'>().default('FIXED'),
@@ -44,6 +50,9 @@ export const createVariantSchema = z.object({
   price: z.number().min(0, "Price cannot be negative"),
   stock: z.number().int().min(0),
 
+  // New Retail Fields
+  warranty: z.string().optional().default("No Warranty"),
+  requiresImei: z.boolean().optional().default(false),
 
   discountStatus: z.boolean().optional().default(false),
   discountType: z.enum(['PERCENTAGE', 'FIXED']).optional().default('FIXED'),
@@ -55,7 +64,6 @@ export const createVariantSchema = z.object({
   options: z.record(z.string(), z.string()).optional(),
   isPublished: z.boolean().optional(),
 }).superRefine((data, ctx) => {
-  // 1. Validation: Percentage cannot exceed 100%
   if (data.discountType === 'PERCENTAGE' && (data.discountValue || 0) > 100) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -64,7 +72,6 @@ export const createVariantSchema = z.object({
     });
   }
 
-  // 2. Validation: Fixed discount cannot exceed the product price
   if (data.discountType === 'FIXED' && (data.discountValue || 0) > data.price) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -73,8 +80,6 @@ export const createVariantSchema = z.object({
     });
   }
 });
-
-
 
 export const updateVariantSchema = createVariantSchema.partial();
 export type CreateVariantInput = z.infer<typeof createVariantSchema>;

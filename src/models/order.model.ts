@@ -17,12 +17,20 @@ export const orderSourceEnum = pgEnum('order_source', ['online', 'offline']);
 // 2. TABLES
 // =======================
 
+// ... existing imports
+
 export const orders = pgTable("orders", {
     id: uuid("id").primaryKey().defaultRandom(),
     source: orderSourceEnum("source").default('online').notNull(),
     customerId: uuid("customer_id").references(() => customers.id),
     orderNumber: varchar("order_number", { length: 20 }).unique(),
+
+    // NEW: Staff Attribution (G&G Style)
+    servedBy: varchar("served_by", { length: 255 }),
+    subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(),
+    shippingCost: decimal("shipping_cost", { precision: 12, scale: 2 }).notNull(),
     totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+    discount: decimal("discount", { precision: 12, scale: 2 }).default("0.00"), // Added column
     currency: varchar("currency", { length: 3 }).default('BDT'),
 
     paymentMethod: paymentMethodEnum("payment_method").default('cod').notNull(),
@@ -48,7 +56,13 @@ export const orderItems = pgTable("order_items", {
     variantId: uuid("variant_id").references(() => productVariants.id, { onDelete: 'set null' }),
 
     name: varchar("name", { length: 255 }).notNull(),
-    thumbnailAtPurchase: text("thumbnail_at_purchase"), // Added to preserve order history visual 
+    sku: varchar("sku", { length: 100 }), // Added for item barcode
+
+    // NEW: Unit Level Tracking
+    imei: varchar("imei", { length: 100 }),    // Serial/IMEI Number
+    warranty: varchar("warranty", { length: 100 }), // e.g. "12 Months"
+
+    thumbnailAtPurchase: text("thumbnail_at_purchase"),
     quantity: integer("quantity").notNull().default(1),
     priceAtPurchase: decimal("price_at_purchase", { precision: 12, scale: 2 }).notNull(),
 });
@@ -72,16 +86,23 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 // 4. ZOD SCHEMAS
 // =======================
 
+// --- Updated Item Schema ---
 const posOrderItemSchema = z.object({
-    quantity: z.number().min(1),
-    // If variantId is present, it's a DB product. 
-    // If null, it must have a name and price.
+    quantity: z.coerce.number().min(1), // Automatically converts "1" to 1
     variantId: z.string().uuid().optional().nullable(),
     productId: z.string().uuid().optional().nullable(),
     name: z.string().min(1, "Item name is required"),
-    priceAtPurchase: z.number().min(0),
+    sku: z.string().optional().nullable(), // For barcode display
+
+    // NEW: Retail Fields
+    imei: z.string().optional().nullable(),
+    warranty: z.string().optional().nullable(),
+
+    priceAtPurchase: z.coerce.number().min(0),
     thumbnailAtPurchase: z.string().url().optional().nullable(),
 });
+
+
 
 const contactInfoSchema = z.object({
     fullName: z.string().min(2, "Full name is required"),
@@ -99,16 +120,16 @@ const addressSchema = z.object({
 
 // --- Online Order Schema ---
 export const createOrderSchema = z.object({
-    cartId: z.string().uuid(),
+    cartId: z.string().uuid("Invalid cart session"),
     paymentMethod: z.enum(['cod', 'online']),
-    contactInfo: contactInfoSchema,
-    shippingAddress: addressSchema,
+    contactInfo: contactInfoSchema, // Reusing your existing sub-schema
+    shippingAddress: addressSchema,   // Required for online orders
     orderNote: z.string().optional(),
 });
-
-// --- Admin/Outlet Order Schema ---
+// --- Updated Admin Order Schema ---
 export const createAdminOrderSchema = z.object({
     source: z.enum(['online', 'offline']).default('offline'),
+    servedBy: z.string().min(1, "Staff name is required for offline orders").optional(), // NEW
     customerId: z.string().uuid().optional(),
     contactInfo: contactInfoSchema,
     items: z.array(posOrderItemSchema).min(1),
@@ -116,7 +137,8 @@ export const createAdminOrderSchema = z.object({
     paymentStatus: z.enum(['paid', 'unpaid']),
     status: z.enum(['delivered', 'processing', 'pending', 'confirmed']),
     shippingAddress: addressSchema.partial().optional().nullable(),
-    discount: z.number().optional(),
+    shippingCost: z.coerce.number().optional().default(0), // Added
+    discount: z.coerce.number().optional().default(0),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

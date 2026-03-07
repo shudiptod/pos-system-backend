@@ -19,7 +19,7 @@ export const updateVariant = async (req: Request, res: Response) => {
     const data = parsed.data;
 
     // 2. Format for Database (Convert Number -> String for Decimal columns)
-    const updateData: any = { ...data };
+    const updateData: any = { ...data, sku: data.sku === "" ? null : data.sku, };
 
     if (data.price !== undefined) {
       updateData.price = data.price.toString();

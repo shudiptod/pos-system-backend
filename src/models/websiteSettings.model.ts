@@ -1,12 +1,11 @@
-import { pgTable, uuid, text, varchar, jsonb, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, varchar, jsonb, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { z } from "zod";
-
 
 export const websiteSettings = pgTable("website_settings", {
     id: uuid("id").primaryKey().defaultRandom(),
 
     // General Info
-    appName: varchar("app_name", { length: 255 }).default("MMH Station 25"),
+    appName: varchar("app_name", { length: 255 }).default("Gajitto"),
     description: text("description"),
     logo: text("logo"),
     favicon: text("favicon"),
@@ -16,10 +15,25 @@ export const websiteSettings = pgTable("website_settings", {
     contactPhone: varchar("contact_phone", { length: 50 }),
     address: text("address"),
 
+    // RETAIL COMPLIANCE (G&G Style)
+    binNumber: varchar("bin_number", { length: 100 }), // e.g. 003629394-0101
+    mushakType: varchar("mushak_type", { length: 50 }).default("6.3"),
+    authorizedStatus: text("authorized_status"), // e.g. "Apple Authorized Reseller"
+
+    // INVOICE CUSTOMIZATION STATE
+    invoiceBrandColor: varchar("invoice_brand_color", { length: 7 }).default("#00B050"),
+    invoiceFooterNote: text("invoice_footer_note").default("Once sold, items cannot be returned or exchanged."),
+
+    // Feature Toggles for Invoice
+    showImeiOnInvoice: boolean("show_imei_on_invoice").default(true),
+    showWarrantyOnInvoice: boolean("show_warranty_on_invoice").default(true),
+    showStaffOnInvoice: boolean("show_staff_on_invoice").default(true),
+    showAmountInWords: boolean("show_amount_in_words").default(true),
+
     // Social Media
     socialLinks: jsonb("social_links").default({}),
 
-    // NEW: Shipping Charges (in BDT)
+    // Shipping Charges
     shippingInsideDhaka: integer("shipping_inside_dhaka").default(60),
     shippingOutsideDhaka: integer("shipping_outside_dhaka").default(120),
 
@@ -31,10 +45,8 @@ export const websiteSettings = pgTable("website_settings", {
 });
 
 
-
-
 export const settingsSchema = z.object({
-    appName: z.string().min(1).optional(),
+    appName: z.string().min(1, "Company name is required"),
     description: z.string().optional(),
     logo: z.string().url().optional().or(z.literal("")),
     favicon: z.string().url().optional().or(z.literal("")),
@@ -42,11 +54,25 @@ export const settingsSchema = z.object({
     contactEmail: z.string().email().optional().or(z.literal("")),
     contactPhone: z.string().optional(),
     address: z.string().optional(),
-    socialLinks: z.record(z.string(), z.string().url()).optional(),
 
-    // NEW: Shipping Validation
-    shippingInsideDhaka: z.coerce.number().min(0, "Must be a positive number").default(60),
-    shippingOutsideDhaka: z.coerce.number().min(0, "Must be a positive number").default(120),
+    // Compliance Validation
+    binNumber: z.string().optional(),
+    mushakType: z.string().default("6.3"),
+    authorizedStatus: z.string().optional(),
+
+    // Invoice Customizer Validation
+    invoiceBrandColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Invalid Hex Color").default("#00B050"),
+    invoiceFooterNote: z.string().optional(),
+
+    showImeiOnInvoice: z.boolean().default(true),
+    showWarrantyOnInvoice: z.boolean().default(true),
+    showStaffOnInvoice: z.boolean().default(true),
+    showAmountInWords: z.boolean().default(true),
+
+    socialLinks: z.record(z.string(), z.string().url().or(z.literal(""))).optional(),
+
+    shippingInsideDhaka: z.coerce.number().min(0).default(60),
+    shippingOutsideDhaka: z.coerce.number().min(0).default(120),
 
     metaKeywords: z.string().optional(),
 });

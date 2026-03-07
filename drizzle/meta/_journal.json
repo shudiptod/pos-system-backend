@@ -162,6 +162,27 @@
       "when": 1771435801313,
       "tag": "0022_slow_iceman",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1772878990800,
+      "tag": "0023_slim_sleeper",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1772879587375,
+      "tag": "0024_low_whiplash",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1772896539415,
+      "tag": "0025_aberrant_toxin",
+      "breakpoints": true
     }
   ]
 }

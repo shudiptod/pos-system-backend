@@ -281,7 +281,9 @@ export const getProducts = async (req: Request, res: Response) => {
           options: productVariants.options,
           categoryName: categories.name,
           categorySlug: categories.slug,
-          isPublished: productVariants.isPublished
+          isPublished: productVariants.isPublished,
+          requiresImei: productVariants.requiresImei,
+          wrranty: productVariants.warranty
         })
         .from(productVariants)
         .innerJoin(products, eq(products.id, productVariants.productId))
