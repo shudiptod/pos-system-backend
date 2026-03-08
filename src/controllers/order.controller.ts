@@ -125,10 +125,6 @@ export const createAdminOrder = async (req: AdminAuthRequest, res: Response) => 
         // 2. Logic: Determine shipping (Admin can override, but we default to settings)
         // If the admin didn't manually set a shipping cost, we calculate it automatically
         let finalShipping = body.shippingCost;
-        if (body.shippingAddress?.city && (!body.shippingCost)) {
-            const isDhaka = body.shippingAddress.city.trim().toLowerCase().includes("dhaka city");
-            finalShipping = isDhaka ? rateInside : rateOutside;
-        }
 
         const result = await db.transaction(async (tx) => {
             let subtotal = 0;
