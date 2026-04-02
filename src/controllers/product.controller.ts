@@ -554,6 +554,116 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
 };
 
 
+export const getRelatedProducts = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const limit = Number(req.query.limit) || 4;
+
+    // 1. Get current product title and category info
+    const [currentProduct] = await db
+      .select({
+        title: products.title,
+        categoryId: products.categoryId
+      })
+      .from(products)
+      .where(eq(products.id, id));
+
+    if (!currentProduct) return res.status(404).json({ message: "Product not found" });
+
+    // Extract the first word of the title (e.g., "iPhone" from "iPhone 15 Pro")
+    const searchKeyword = currentProduct.title.split(" ")[0];
+
+    // 2. Find Root Category (Climb UP)
+    const rootSearch = await db.execute(sql`
+      WITH RECURSIVE find_root AS (
+        SELECT id, parent_id FROM ${categories} WHERE id = ${currentProduct.categoryId}
+        UNION ALL
+        SELECT c.id, c.parent_id FROM ${categories} c
+        INNER JOIN find_root fr ON c.id = fr.parent_id
+      )
+      SELECT id FROM find_root WHERE parent_id IS NULL LIMIT 1
+    `);
+
+    const rootId = rootSearch[0]?.id;
+
+    // 3. Get All Category IDs in that root (Search DOWN)
+    const allRelativeCategories = await db.execute(sql`
+      WITH RECURSIVE category_descendants AS (
+        SELECT id FROM ${categories} WHERE id = ${rootId}
+        UNION ALL
+        SELECT c.id FROM ${categories} c
+        INNER JOIN category_descendants cd ON c.parent_id = cd.id
+      )
+      SELECT id FROM category_descendants
+    `);
+    const categoryIds = allRelativeCategories.map((row: any) => row.id);
+
+    // 4. Final Fetch with Title Similarity
+    const relatedData = await db
+      .select({
+        productId: products.id,
+        productTitle: products.title,
+        slug: products.slug,
+        variantId: productVariants.id,
+        variantTitle: productVariants.title,
+        price: productVariants.price,
+        discountStatus: productVariants.discountStatus,
+        discountType: productVariants.discountType,
+        discountValue: productVariants.discountValue,
+        stock: productVariants.stock,
+        thumbnail: sql<string>`${productVariants.images}[1]`,
+        categoryName: categories.name,
+      })
+      .from(productVariants)
+      .innerJoin(products, eq(products.id, productVariants.productId))
+      .leftJoin(categories, eq(products.categoryId, categories.id))
+      .where(
+        and(
+          inArray(products.categoryId, categoryIds),
+          not(eq(products.id, id)),
+          eq(productVariants.isPublished, true)
+        )
+      )
+      .orderBy(
+        desc(sql`CASE WHEN ${productVariants.stock} > 0 THEN 1 ELSE 0 END`),
+        // PRIORITY 1: Same Title Keyword (e.g., both are "Samsung")
+        desc(sql`CASE WHEN ${products.title} ILIKE ${'%' + searchKeyword + '%'} THEN 1 ELSE 0 END`),
+        // PRIORITY 2: Same exact sub-category
+        desc(sql`CASE WHEN ${products.categoryId} = ${currentProduct.categoryId} THEN 1 ELSE 0 END`),
+        sql`RANDOM()`
+      )
+      .limit(limit);
+
+    // 5. Formatting Logic
+    const formattedProducts = relatedData.map((item) => {
+      const basePrice = Number(item.price);
+      const discValue = Number(item.discountValue || 0);
+      let salePrice = basePrice;
+
+      if (item.discountStatus && discValue > 0) {
+        salePrice = item.discountType === "PERCENTAGE"
+          ? basePrice * (1 - discValue / 100)
+          : basePrice - discValue;
+      }
+
+      return {
+        ...item,
+        price: basePrice,
+        salePrice: Math.round(salePrice),
+        fullTitle: item.variantTitle === "Default" || !item.variantTitle
+          ? item.productTitle
+          : `${item.productTitle} - ${item.variantTitle}`
+      };
+    });
+
+    res.json({ success: true, data: formattedProducts });
+
+  } catch (error: any) {
+    console.error("Title-Aware Related Products Error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 //  get all products regardless of the category or filters
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
