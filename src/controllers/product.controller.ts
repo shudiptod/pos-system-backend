@@ -189,6 +189,7 @@ export const getProducts = async (req: Request, res: Response) => {
       limit = "12",
       sort = "newest",
       availability = null,
+      isFeatured = null,
       ...dynamicFilters
     } = req.query;
 
@@ -198,6 +199,10 @@ export const getProducts = async (req: Request, res: Response) => {
 
     // --- 1. Global Conditions (Category, Search, Price) ---
     const globalConditions: SQL[] = [sql`1=1`];
+
+    if (isFeatured === "true") {
+      globalConditions.push(eq(productVariants.isFeatured, true));
+    }
 
     if (category) {
       const [rootCategory] = await db
@@ -395,6 +400,7 @@ export const getProductBySlug = async (req: Request, res: Response) => {
         slug: products.slug,
         categoryId: products.categoryId,
         categoryName: categories.name,
+        categorySlug: categories.slug,
       })
       .from(products)
       .leftJoin(categories, eq(products.categoryId, categories.id))

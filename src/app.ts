@@ -83,7 +83,7 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use("/api", limiter);
+// app.use("/api", limiter);
 
 app.get("/", (req, res) => {
   res.json({
