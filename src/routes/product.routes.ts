@@ -1,20 +1,37 @@
+// src/routes/product.routes.ts
 import { Router } from "express";
 import { authenticateJWT, authorize } from "../middleware/auth";
-import { createCategory, deleteCategory, getCategories, getCategoryBySlug, getRootCategories, updateCategory } from "../controllers/category.controller";
-import { createProduct, deleteProduct, getAllProducts, getFeaturedProducts, getProductById, getProductBySlug, getProducts, getRelatedProducts, updateProduct } from "../controllers/product.controller";
-import { addVariantToProduct, deleteVariant, deleteVariants, updateVariant } from "../controllers/variant.controller";
+import {
+	createCategory,
+	deleteCategory,
+	getCategories,
+	getCategoryBySlug,
+	getRootCategories,
+	updateCategory,
+} from "../controllers/category.controller";
+import {
+	createProduct,
+	deleteProduct,
+	getAllProducts,
+	getFeaturedProducts,
+	getProductById,
+	getProductBySlug,
+	getProducts,
+	updateProduct,
+	getProductsByCategorySlug
+} from "../controllers/product.controller";
+// Note: variant.controller imports have been completely removed
 
 const router = Router();
 
 // get all products from db
 router.get("/all", getAllProducts as any);
-router.get("/related/:id", getRelatedProducts as any);
 
 router.post(
-    "/categories",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    createCategory as any
+	"/categories",
+	authenticateJWT as any,
+	authorize(["SUPER_ADMIN", "ADMIN", "MANAGER"]) as any,
+	createCategory as any,
 );
 router.get("/categories", getCategories);
 
@@ -26,78 +43,37 @@ router.get("/categories/:slug", getCategoryBySlug);
 router.get("/featured", getFeaturedProducts);
 
 // update category
-
 router.patch(
-    "/categories/:id",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    updateCategory as any
+	"/categories/:id",
+	authenticateJWT as any,
+	authorize(["SUPER_ADMIN", "ADMIN", "MANAGER"]) as any,
+	updateCategory as any,
 );
 
 // delete category
-
 router.delete(
-    "/categories/:id",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    deleteCategory as any
+	"/categories/:id",
+	authenticateJWT as any,
+	authorize(["SUPER_ADMIN", "ADMIN"]) as any,
+	deleteCategory as any,
 );
 
+// Note: All variant routes (POST, PATCH, DELETE /variants) have been removed
 
-// add new variant
-router.post(
-    "/variants",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    addVariantToProduct as any
-);
-
-
-// delete multiple products and variants
-// delete variant
-router.delete(
-    "/variants",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    deleteVariants as any
-);
-
-
-
-// delete variant
-router.delete(
-    "/variants/:id",
-    authenticateJWT as any,
-    authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    deleteVariant as any
-);
-
-
-
-// update product variant
-router.patch("/variants/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, updateVariant);
-
-
-router.post("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, createProduct as any);
-
+// Product Routes
+router.post("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN", "MANAGER"]) as any, createProduct as any);
 router.get("/:id", getProductById);
-// get product by slug
 router.get("/slug/:slug", getProductBySlug);
-
-// update product 
-router.patch("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, updateProduct as any);
-
-// delete product 
-router.delete("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any,
-    deleteProduct as any
+router.patch(
+	"/:id",
+	authenticateJWT as any,
+	authorize(["SUPER_ADMIN", "ADMIN", "MANAGER"]) as any,
+	updateProduct as any,
 );
-
-
-
-// get all products
+router.delete("/:id", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, deleteProduct as any);
+router.delete("/", authenticateJWT as any, authorize(["SUPER_ADMIN", "ADMIN"]) as any, deleteProduct as any);
 router.get("/", getProducts as any);
-
-
+router.get("/category/:slug", getProductsByCategorySlug  as any);
 
 
 export default router;

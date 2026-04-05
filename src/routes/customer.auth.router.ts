@@ -1,3 +1,4 @@
+// src/routes/customer.auth.router.ts
 import { Router } from "express";
 import { 
   registerUser, 

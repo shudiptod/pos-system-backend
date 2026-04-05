@@ -12,6 +12,8 @@ import { orderItems, orders, orderItemsRelations, ordersRelations } from '../mod
 import { storeLocations } from '../models/storeLocation.model';
 import { settingsSchema } from '../models/websiteSettings.model';
 import { appLogs } from '../models/logger.model';
+import { banners } from '../models/banner.model';
+import { reviews } from '../models/review.model';
 
 const connectionString = process.env.DATABASE_URL
 
@@ -32,7 +34,9 @@ export const db = drizzle(client, {
     ordersRelations,
     storeLocations,
     settingsSchema,
-    appLogs
+    appLogs,
+    banners,
+    reviews
   },
 });
 

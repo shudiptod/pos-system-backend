@@ -6,6 +6,7 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+env.txt
 dist/
 build/
 *.tsbuildinfo
@@ -25,3 +26,4 @@ coverage/
 *.swo
 .DS_Store
 Thumbs.db
+bun.lock

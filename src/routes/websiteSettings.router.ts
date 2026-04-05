@@ -1,3 +1,4 @@
+// src/routes/websiteSettings.router.ts
 import { authenticateJWT, authorize } from "../middleware/auth";
 import { getSettings, updateSettings } from "../controllers/websiteSettings.controller";
 import { Router } from "express";

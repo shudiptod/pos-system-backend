@@ -1,3 +1,4 @@
+// src/routes/admin.router.ts
 import { Router } from "express";
 import { loginAdmin, createAdmin, updateAdmin, getCustomers, getCustomer, getAdminInfo, getAllAdmins, logoutAdmin } from "../controllers/admin.auth.controller";
 import { authenticateJWT } from "../middleware/auth";

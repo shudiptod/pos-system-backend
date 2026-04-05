@@ -12,6 +12,7 @@
     "lint": "eslint . --ext .ts",
     "migrate": "drizzle-kit generate && drizzle-kit push",
     "seed:admin": "ts-node src/db/seed-admin.ts",
+    "seed:categories": "ts-node src/db/seed-categories.ts",
     "studio": "drizzle-kit studio"
   },
   "keywords": [],
@@ -38,7 +39,8 @@
     "node-cron": "^4.2.1",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
-    "resend": "^6.7.0",
+    "resend": "^6.10.0",
+    "sslcommerz-lts": "^1.2.0",
     "uuid": "^13.0.0",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"

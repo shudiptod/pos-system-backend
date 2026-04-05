@@ -13,7 +13,7 @@ export interface AuthRequest extends Request {
 // Define roles and allowed actions
 export const RESOURCE_PERMISSIONS: Record<string, Record<string, UserRole[]>> = {
   customer: {
-    create: ["SUPER_ADMIN", "ADMIN", "MANAGER", "TECHNICIAN"],
+    create: ["SUPER_ADMIN", "ADMIN", "MANAGER"],
     update: ["SUPER_ADMIN", "ADMIN", "MANAGER"],
   },
   product: {
