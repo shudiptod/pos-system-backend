@@ -1,1 +1,0 @@
-ALTER TABLE "product_variants" ADD COLUMN "discount_status" boolean DEFAULT false;

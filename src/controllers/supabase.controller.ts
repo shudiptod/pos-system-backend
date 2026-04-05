@@ -1,20 +1,14 @@
 // src/controllers/supabase.controller.ts
 import { Request, Response } from "express";
 import { uploadImageToSupabase, createSupabaseClient } from "../lib/supabase";
-import { AuthRequest } from "@/middleware/auth";
+import { AuthRequest } from "../middleware/auth";
 
-export const uploadFile = async (req: Request, res: Response) => {
+export const uploadFile = async (req: AuthRequest, res: Response) => {
 	try {
-		// For customer uploads, we might want to associate the file with the user or apply different rules
-		const user = (req as AuthRequest).user;
-		console.log(user);
-		if (!req.file) {
-			return res.status(400).json({ success: false, message: "No file uploaded" });
-		}
-		const folder = user?.id ? (req.query.folder as string) : "avatar";
-		console.log(folder);
+		if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded" });
+
+		const folder = req.query.folder ? String(req.query.folder) : "pos-assets";
 		const publicUrl = await uploadImageToSupabase(req.file, folder);
-		console.log(publicUrl);
 
 		res.json({ success: true, url: publicUrl });
 	} catch (error: any) {
@@ -25,18 +19,9 @@ export const uploadFile = async (req: Request, res: Response) => {
 
 export const getStorageLibrary = async (req: AuthRequest, res: Response) => {
 	try {
-		// check if user is admin or not
-		const user = req.user;
-		if (!user) {
-			return res.status(401).json({ success: false, message: "Unauthorized" });
-		}
-
 		const supabase = createSupabaseClient();
-		const BUCKET_NAME = "bucket-mehezabinmehedi";
+		const BUCKET_NAME = "bucket-mehezabinmehedi"; // Change to your POS bucket name if needed
 
-		/**
-		 * Recursive function to fetch files and folders
-		 */
 		async function fetchRecursive(path = ""): Promise<any[]> {
 			const { data, error } = await supabase.storage.from(BUCKET_NAME).list(path, {
 				limit: 100,
@@ -49,8 +34,6 @@ export const getStorageLibrary = async (req: AuthRequest, res: Response) => {
 			return Promise.all(
 				data.map(async (item) => {
 					const fullPath = path ? `${path}/${item.name}` : item.name;
-
-					// Supabase marks folders by not having an 'id' or metadata
 					const isFolder = !item.id;
 
 					if (isFolder) {
@@ -58,11 +41,10 @@ export const getStorageLibrary = async (req: AuthRequest, res: Response) => {
 							name: item.name,
 							type: "folder",
 							path: fullPath,
-							children: await fetchRecursive(fullPath), // Dig deeper
+							children: await fetchRecursive(fullPath),
 						};
 					}
 
-					// It's a file - get the public URL
 					const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
 
 					return {
@@ -72,21 +54,14 @@ export const getStorageLibrary = async (req: AuthRequest, res: Response) => {
 						url: urlData.publicUrl,
 						metadata: item.metadata,
 					};
-				}),
+				})
 			);
 		}
 
 		const tree = await fetchRecursive();
-
-		return res.status(200).json({
-			success: true,
-			data: tree,
-		});
+		return res.status(200).json({ success: true, data: tree });
 	} catch (error: any) {
 		console.error("Storage Library Error:", error);
-		return res.status(500).json({
-			success: false,
-			message: error.message || "Internal Server Error",
-		});
+		return res.status(500).json({ success: false, message: error.message });
 	}
 };

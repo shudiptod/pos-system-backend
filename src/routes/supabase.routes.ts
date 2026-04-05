@@ -1,16 +1,11 @@
-
-
-
-import { authenticateCustomer } from "../middleware/customerAuth";
+import { Router } from "express";
 import { getStorageLibrary, uploadFile } from "../controllers/supabase.controller";
 import { authenticateJWT, authorize } from "../middleware/auth";
 import { upload } from "../middleware/upload";
-import { Router } from "express";
 
 const router = Router();
 
-
-// get all files and folders in storage library
+// Get all files in storage library
 router.get(
     "/library",
     authenticateJWT as any,
@@ -18,20 +13,13 @@ router.get(
     getStorageLibrary as any
 );
 
-// POST /api/upload
+// Upload a new file (e.g., product image)
 router.post(
     "/",
     authenticateJWT as any,
     authorize(["ADMIN", "SUPER_ADMIN", "MANAGER"]) as any,
-    upload.single("file"), // Expect field name 'file'
-    uploadFile
-);
-
-router.post(
-    "/customer",
-    authenticateCustomer as any,
-    upload.single("file"), // Expect field name 'file'
-    uploadFile
+    upload.single("file"),
+    uploadFile as any
 );
 
 export default router;

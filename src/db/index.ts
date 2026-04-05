@@ -7,13 +7,9 @@ dotenv.config();
 import { admins } from '../models/admin.model';
 import { products } from '../models/product.model';
 import { customers } from '../models/customer.model';
-import { cartItems } from '../models/cartItems.model';
 import { orderItems, orders, orderItemsRelations, ordersRelations } from '../models/order.model';
-import { storeLocations } from '../models/storeLocation.model';
-import { settingsSchema } from '../models/websiteSettings.model';
-import { appLogs } from '../models/logger.model';
-import { banners } from '../models/banner.model';
-import { reviews } from '../models/review.model';
+import { settingsSchema } from '../models/storeSettings.model';
+
 
 const connectionString = process.env.DATABASE_URL
 
@@ -27,16 +23,11 @@ export const db = drizzle(client, {
     admins,
     products,
     customers,
-    cartItems,
     orderItems,
     orders,
     orderItemsRelations,
     ordersRelations,
-    storeLocations,
     settingsSchema,
-    appLogs,
-    banners,
-    reviews
   },
 });
 

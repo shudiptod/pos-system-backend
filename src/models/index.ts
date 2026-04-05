@@ -1,9 +1,6 @@
 export * from './admin.model';
 export * from './category.model';
 export * from './customer.model';
-// export * from './address.model';
 export * from './product.model';
 export * from './order.model';
-export * from './carts.model';
-export * from './cartItems.model';
-export * from './logger.model';
+export * from './storeSettings.model';

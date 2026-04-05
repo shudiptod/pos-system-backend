@@ -2,14 +2,14 @@
 import { pgTable, uuid, text, boolean, timestamp } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
-export const ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "MODERATOR"] as const;
+export const ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"] as const; // Swapped MODERATOR for CASHIER
 export type UserRole = (typeof ROLES)[number];
 
 export const admins = pgTable("admins", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	email: text("email").notNull().unique(),
 	name: text("name").notNull(),
-	role: text("role").$type<UserRole>().default("MANAGER").notNull(),
+	role: text("role").$type<UserRole>().default("CASHIER").notNull(),
 	passwordHash: text("password_hash").notNull(),
 	isActive: boolean("is_active").default(true),
 	isDeleted: boolean("is_deleted").default(false),

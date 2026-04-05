@@ -1,14 +1,9 @@
-
-//admin auth middleware
-
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { UserRole } from "../models/admin.model";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
-
-// Extend Request to include typed user
 export interface AuthRequest extends Request {
   user?: {
     id: string;
@@ -17,7 +12,6 @@ export interface AuthRequest extends Request {
   };
 }
 
-// Middleware to authenticate JWT and attach user
 export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer "))
@@ -28,9 +22,9 @@ export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunct
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; role: string };
 
-    // Ensure role is a valid UserRole
     const role = decoded.role as UserRole;
-    if (!["SUPER_ADMIN", "ADMIN", "MANAGER", "TECHNICIAN"].includes(role))
+    // Updated to match POS roles
+    if (!["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"].includes(role))
       return res.status(403).json({ success: false, message: "Invalid role" });
 
     req.user = {
@@ -45,8 +39,6 @@ export const authenticateJWT = (req: AuthRequest, res: Response, next: NextFunct
   }
 };
 
-
-// 2. AUTHORIZATION: Checks "Are you allowed to do this?" (Verifies Role)
 export const authorize = (allowedRoles: UserRole[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -54,13 +46,12 @@ export const authorize = (allowedRoles: UserRole[]) => {
     }
 
     if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        success: false, 
-        message: "Forbidden: Insufficient permissions for this action" 
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Insufficient permissions for this action"
       });
     }
 
     next();
   };
 };
-

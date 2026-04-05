@@ -1,1 +1,0 @@
-ALTER TABLE "products" ADD COLUMN "lists" text[] DEFAULT ARRAY[]::text[];
