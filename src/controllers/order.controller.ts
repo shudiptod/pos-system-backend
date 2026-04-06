@@ -8,6 +8,8 @@ import { generateUniqueOrderNumber } from "../utils/order-helper"; // Ensure thi
 import { AuthRequest } from "../middleware/auth";
 
 
+import { customers } from "../models/customer.model"; // Import your customer model
+
 export const createPosOrder = async (req: AuthRequest, res: Response) => {
     try {
         const parsed = createPosOrderSchema.safeParse(req.body);
@@ -16,30 +18,50 @@ export const createPosOrder = async (req: AuthRequest, res: Response) => {
         const body = parsed.data;
 
         const result = await db.transaction(async (tx) => {
+            // --- 1. HANDLE CUSTOMER LOGIC ---
+            let finalCustomerId = body.customerId;
+
+            // if staff provided a phone number but no customerId, try to find or create
+            if (!finalCustomerId && body.customerPhone) {
+                const [existingCustomer] = await tx
+                    .select()
+                    .from(customers)
+                    .where(eq(customers.phone, body.customerPhone));
+
+                if (existingCustomer) {
+                    finalCustomerId = existingCustomer.id;
+                } else {
+                    // Create new customer on the fly
+                    const [newCustomer] = await tx.insert(customers).values({
+                        name: body.customerName || "Walk-in Customer",
+                        phone: body.customerPhone,
+                    }).returning();
+                    finalCustomerId = newCustomer.id;
+                }
+            }
+
+            // Prepare the snapshot for the invoice
+            const customerSnapshot = {
+                fullName: body.customerName || "Walk-in Customer",
+                phone: body.customerPhone || null,
+            };
+
+            // --- 2. PRODUCT & STOCK LOGIC ---
             let subtotal = 0;
             const finalizedItems = [];
 
             for (const item of body.items) {
                 if (!item.productId) {
-                    // Custom line item (not in DB)
                     subtotal += item.priceAtPurchase * item.quantity;
                     finalizedItems.push({ ...item, priceAtPurchase: String(item.priceAtPurchase) });
                     continue;
                 }
 
-                // Look up actual product to verify stock and price
-                const [product] = await tx
-                    .select()
-                    .from(products)
-                    .where(eq(products.id, item.productId));
-
+                const [product] = await tx.select().from(products).where(eq(products.id, item.productId));
                 if (!product) throw new Error(`Product not found: ${item.name}`);
                 if (product.stock < item.quantity) throw new Error(`Out of stock: ${item.name}`);
 
-                // Base price without product-level discounts
-                const basePrice = Number(product.price);
-                const finalPrice = Math.round(basePrice);
-
+                const finalPrice = Math.round(Number(product.price));
                 subtotal += finalPrice * item.quantity;
 
                 finalizedItems.push({
@@ -50,18 +72,17 @@ export const createPosOrder = async (req: AuthRequest, res: Response) => {
                     priceAtPurchase: String(finalPrice),
                 });
 
-                // Deduct Stock
                 await tx.update(products)
                     .set({ stock: sql`${products.stock} - ${item.quantity}` })
                     .where(eq(products.id, product.id));
             }
 
-            // Apply the ORDER-LEVEL discount here
             const totalAmount = subtotal - (body.discount || 0);
 
-            // Create Order
+            // --- 3. CREATE ORDER WITH SNAPSHOT ---
             const [newOrder] = await tx.insert(orders).values({
-                customerId: body.customerId,
+                customerId: finalCustomerId,
+                customerSnapshot: customerSnapshot, // Saving the snapshot here
                 servedBy: body.servedBy,
                 orderNumber: await generateUniqueOrderNumber(tx),
                 subtotal: String(subtotal),
@@ -73,7 +94,6 @@ export const createPosOrder = async (req: AuthRequest, res: Response) => {
                 orderNote: body.orderNote,
             }).returning();
 
-            // Create Order Items
             await tx.insert(orderItems).values(
                 finalizedItems.map((item) => ({
                     orderId: newOrder.id,

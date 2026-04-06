@@ -4,6 +4,7 @@ import { relations } from "drizzle-orm";
 import { customers } from "./customer.model";
 import { products } from "./product.model";
 import { z } from "zod";
+import { jsonb } from "drizzle-orm/pg-core";
 
 // =======================
 // 1. ENUMS
@@ -18,6 +19,10 @@ export const paymentMethodEnum = pgEnum("payment_method", ["cash", "card", "mobi
 export const orders = pgTable("orders", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	customerId: uuid("customer_id").references(() => customers.id), // Nullable for anonymous walk-ins
+	customerSnapshot: jsonb("customer_snapshot").$type<{
+		fullName: string | null;
+		phone: string | null;
+	}>(),
 	orderNumber: varchar("order_number", { length: 20 }).unique(),
 
 	servedBy: varchar("served_by", { length: 255 }), // Name or ID of the cashier
@@ -76,6 +81,10 @@ const posOrderItemSchema = z.object({
 
 export const createPosOrderSchema = z.object({
 	customerId: z.string().uuid().optional().nullable(),
+
+	customerName: z.string().optional().nullable(),
+	customerPhone: z.string().optional().nullable(),
+
 	servedBy: z.string().min(1, "Staff name is required"),
 	items: z.array(posOrderItemSchema).min(1),
 	paymentMethod: z.enum(["cash", "card", "mobile_banking"]).default("cash"),

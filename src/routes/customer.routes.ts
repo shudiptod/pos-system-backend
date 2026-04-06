@@ -4,13 +4,16 @@ import {
     createCustomer,
     getCustomers,
     getCustomerById,
-    updateCustomer
+    updateCustomer,
+    searchCustomers
 } from "../controllers/customer.controller";
 
 const router = Router();
 
 // Require staff login for all customer actions
 router.use(authenticateJWT as any);
+
+router.get("/search-customers", authorize(["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"]) as any, searchCustomers as any);
 
 // Create a new walk-in customer
 router.post("/", authorize(["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"]) as any, createCustomer as any);

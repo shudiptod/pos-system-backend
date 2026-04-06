@@ -2,20 +2,20 @@
 import { Request, Response } from "express";
 import { db } from "../db";
 import { customers, registerCustomerSchema, updateCustomerSchema } from "../models/customer.model";
-import { eq, or, and, ilike } from "drizzle-orm";
+import { eq, or, and, ilike, sql } from "drizzle-orm";
 
 export const createCustomer = async (req: Request, res: Response) => {
   try {
     const parsed = registerCustomerSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ success: false, errors: parsed.error.format() });
 
-    const { name, phone, email } = parsed.data;
+    const { name, phone } = parsed.data;
 
     // Check duplicate phone
     const [existing] = await db.select().from(customers).where(eq(customers.phone, phone)).limit(1);
     if (existing) return res.status(409).json({ success: false, message: "Phone number already registered." });
 
-    const [newCustomer] = await db.insert(customers).values({ name, phone, email }).returning();
+    const [newCustomer] = await db.insert(customers).values({ name, phone }).returning();
     res.status(201).json({ success: true, message: "Customer created", data: newCustomer });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -71,6 +71,23 @@ export const updateCustomer = async (req: Request, res: Response) => {
     res.json({ success: true, data: updated });
   } catch (error: any) {
     if (error.code === "23505") return res.status(409).json({ success: false, message: "Phone number already exists" });
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const searchCustomers = async (req: Request, res: Response) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) return res.json({ success: true, data: [] });
+
+    const data = await db
+      .select()
+      .from(customers)
+      .where(sql`${customers.phone} ILIKE ${phone + '%'}`)
+      .limit(5);
+
+    res.json({ success: true, data });
+  } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };

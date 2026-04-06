@@ -15,6 +15,13 @@
       "when": 1775428483284,
       "tag": "0001_natural_young_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775490919641,
+      "tag": "0002_useful_morlocks",
+      "breakpoints": true
     }
   ]
 }
