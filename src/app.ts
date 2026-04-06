@@ -15,11 +15,13 @@ import { errorHandler } from "./middleware/errorHandler";
 import { listRoutes } from "./utils/listRoutes";
 
 import adminRoutes from "./routes/admin.routes";
+import customerRoutes from "./routes/customer.routes";
 import productRoutes from "./routes/product.routes";
 import categoryRoutes from "./routes/category.routes"; // Added this
 import uploadRoutes from "./routes/supabase.routes";
 import orderRoutes from "./routes/order.routes";
 import websiteSettingsRoutes from "./routes/storeSettings.routes";
+import { custom } from "zod";
 
 const allowedOrigins = [
   "http://localhost:3000", // Local Web
@@ -91,6 +93,7 @@ app.get("/", (req, res) => {
 
 // Mounted Routes
 app.use("/api/admin", adminRoutes);
+app.use("/api/customer", customerRoutes); // Added this for customer management
 app.use("/api/categories", categoryRoutes); // Categories are now cleanly separated
 app.use("/api/products", productRoutes);
 app.use("/api/upload", uploadRoutes);

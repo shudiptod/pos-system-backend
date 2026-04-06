@@ -34,7 +34,7 @@ export const loginAdmin = async (req: AuthRequest, res: Response) => {
 			expiresIn: JWT_EXPIRES_IN,
 		});
 
-		res.cookie("authToken", token, {
+		res.cookie("caloude_authToken", token, {
 			httpOnly: true,
 			secure: process.env.NODE_ENV === "production",
 			sameSite: "strict",
@@ -58,7 +58,7 @@ export const loginAdmin = async (req: AuthRequest, res: Response) => {
 // ---------------- LOGOUT ----------------
 export const logoutAdmin = async (req: AuthRequest, res: Response) => {
 	try {
-		res.clearCookie("authToken");
+		res.clearCookie("caloude_authToken");
 		res.json({ success: true, message: "Logged out successfully" });
 	} catch (err: any) {
 		console.error(err);
@@ -68,10 +68,10 @@ export const logoutAdmin = async (req: AuthRequest, res: Response) => {
 
 // ---------------- ROLE HIERARCHY (Updated) ----------------
 const hierarchy: Record<UserRole, UserRole[]> = {
-	SUPER_ADMIN: ["ADMIN", "MANAGER", "MODERATOR"],
-	ADMIN: ["MANAGER", "MODERATOR"],
-	MANAGER: ["MODERATOR"],
-	MODERATOR: [],
+	SUPER_ADMIN: ["SUPER_ADMIN", "ADMIN", "MANAGER", "CASHIER"],
+	ADMIN: ["ADMIN"],
+	CASHIER: ["CASHIER"],
+	MANAGER: ["MANAGER"],
 };
 
 const canCreateRole = (creatorRole: UserRole, targetRole: UserRole) => hierarchy[creatorRole].includes(targetRole);
@@ -182,73 +182,5 @@ export const getAdminInfo = async (req: AuthRequest, res: Response) => {
 		res.status(200).json({ success: true, data: safeAdmin });
 	} catch (err: any) {
 		res.status(500).json({ success: false, message: err.message });
-	}
-};
-
-// ---------------- GET CUSTOMERS ----------------
-export const getCustomers = async (req: any, res: Response) => {
-	try {
-		const allCustomers = await db
-			.select({
-				id: customers.id,
-				name: customers.name,
-				email: customers.email,
-				phone: customers.phone,
-				avatarUrl: customers.avatarUrl,
-				isBanned: customers.isBanned,
-				createdAt: customers.createdAt,
-			})
-			.from(customers)
-			.where(eq(customers.isDeleted, false)) // Only fetch non-deleted customers
-			.orderBy(desc(customers.createdAt));
-
-		return res.status(200).json({
-			success: true,
-			data: allCustomers,
-		});
-	} catch (err: any) {
-		console.error("Get Customers Error:", err);
-		return res.status(500).json({
-			success: false,
-			message: "Internal server error",
-		});
-	}
-};
-
-// ---------------- GET SINGLE CUSTOMER ----------------
-export const getCustomer = async (req: any, res: Response) => {
-	try {
-		const { id } = req?.params;
-
-		if (!id) {
-			return res.status(400).json({ success: false, message: "Customer ID is required" });
-		}
-
-		const [customer] = await db
-			.select({
-				id: customers.id,
-				name: customers.name,
-				email: customers.email,
-				phone: customers.phone,
-				avatarUrl: customers.avatarUrl,
-				isBanned: customers.isBanned,
-				notes: customers.notes,
-				createdAt: customers.createdAt,
-			})
-			.from(customers)
-			.where(and(eq(customers.id, id), eq(customers.isDeleted, false))) // Ensure not deleted
-			.limit(1);
-
-		if (!customer) {
-			return res.status(404).json({ success: false, message: "Customer not found" });
-		}
-
-		return res.status(200).json({
-			success: true,
-			data: customer,
-		});
-	} catch (err: any) {
-		console.error("Get Customer Error:", err);
-		return res.status(500).json({ success: false, message: "Internal server error" });
 	}
 };

@@ -6,13 +6,12 @@ export const categories = pgTable("categories", {
 	id: uuid("id").defaultRandom().primaryKey(),
 	name: text("name").notNull(),
 	parentId: uuid("parent_id").references((): AnyPgColumn => categories.id),
-	isActive: boolean("is_active").default(true),
 	isDeleted: boolean("is_deleted").default(false),
 });
 
 export const createCategorySchema = z.object({
 	name: z.string().min(2),
-	parentId: z.string().uuid().optional(),
+	parentId: z.string().uuid().optional().nullable(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();

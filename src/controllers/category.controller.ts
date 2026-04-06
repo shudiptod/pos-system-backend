@@ -26,12 +26,26 @@ export const getCategories = async (req: Request, res: Response) => {
 	}
 };
 
+export const getCategoryById = async (req: Request, res: Response) => {
+	try {
+		const [category] = await db
+			.select()
+			.from(categories)
+			.where(and(eq(categories.id, req.params.id), eq(categories.isDeleted, false)));
+
+		if (!category) return res.status(404).json({ success: false, message: "Category not found" });
+		res.json({ success: true, data: category });
+	} catch (error: any) {
+		res.status(500).json({ success: false, message: error.message });
+	}
+}
+
 export const getRootCategories = async (req: Request, res: Response) => {
 	try {
 		const data = await db
 			.select()
 			.from(categories)
-			.where(and(isNull(categories.parentId), eq(categories.isActive, true), eq(categories.isDeleted, false)));
+			.where(and(isNull(categories.parentId), eq(categories.isDeleted, false)));
 		res.json({ success: true, data });
 	} catch (error: any) {
 		res.status(500).json({ success: false, message: error.message });

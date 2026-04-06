@@ -5,6 +5,7 @@ import {
     createCategory,
     deleteCategory,
     getCategories,
+    getCategoryById,
     getRootCategories,
     updateCategory,
 } from "../controllers/category.controller";
@@ -13,6 +14,7 @@ const router = Router();
 
 // GET /api/categories
 router.get("/", getCategories as any);
+router.get("/:id", getCategoryById as any);
 
 // GET /api/categories/roots
 router.get("/roots", getRootCategories as any);
