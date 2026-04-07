@@ -21,6 +21,7 @@ import categoryRoutes from "./routes/category.routes"; // Added this
 import uploadRoutes from "./routes/supabase.routes";
 import orderRoutes from "./routes/order.routes";
 import websiteSettingsRoutes from "./routes/storeSettings.routes";
+import reportRoutes from "./routes/report.routes";
 import { custom } from "zod";
 
 const allowedOrigins = [
@@ -99,6 +100,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/settings", websiteSettingsRoutes);
+app.use("/api/reports", reportRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

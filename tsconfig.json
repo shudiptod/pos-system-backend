@@ -13,6 +13,7 @@
     "experimentalDecorators": true,
     "baseUrl": ".",
     "allowImportingTsExtensions": false,
+    "ignoreDeprecations": "6.0",
     "noEmit": false,
     "paths": {
       "@/*": ["src/*"]
@@ -22,4 +23,3 @@
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
-

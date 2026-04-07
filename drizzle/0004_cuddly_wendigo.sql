@@ -1,0 +1,1 @@
+ALTER TABLE "order_items" ADD COLUMN "buying_price_at_purchase" numeric(12, 2) NOT NULL;

@@ -10,82 +10,108 @@ import { AuthRequest } from "../middleware/auth";
 
 import { customers } from "../models/customer.model"; // Import your customer model
 
+
+
+/**
+ * Handles the creation of a POS order, stock deduction, 
+ * and customer snapshotting within a database transaction.
+ */
 export const createPosOrder = async (req: AuthRequest, res: Response) => {
     try {
+        // 1. Validate Input
         const parsed = createPosOrderSchema.safeParse(req.body);
-        if (!parsed.success) return res.status(400).json({ success: false, errors: parsed.error.format() });
+        if (!parsed.success) {
+            return res.status(400).json({ success: false, errors: parsed.error.format() });
+        }
 
         const body = parsed.data;
 
+        // 2. Start Transaction to ensure data integrity
         const result = await db.transaction(async (tx) => {
-            // --- 1. HANDLE CUSTOMER LOGIC ---
             let finalCustomerId = body.customerId;
 
-            // if staff provided a phone number but no customerId, try to find or create
+            // Handle Walk-in / New Customer Logic
             if (!finalCustomerId && body.customerPhone) {
-                const [existingCustomer] = await tx
+                const [existing] = await tx
                     .select()
                     .from(customers)
                     .where(eq(customers.phone, body.customerPhone));
 
-                if (existingCustomer) {
-                    finalCustomerId = existingCustomer.id;
+                if (existing) {
+                    finalCustomerId = existing.id;
                 } else {
-                    // Create new customer on the fly
-                    const [newCustomer] = await tx.insert(customers).values({
+                    const [newCust] = await tx.insert(customers).values({
                         name: body.customerName || "Walk-in Customer",
                         phone: body.customerPhone,
                     }).returning();
-                    finalCustomerId = newCustomer.id;
+                    finalCustomerId = newCust.id;
                 }
             }
 
-            // Prepare the snapshot for the invoice
+            // Create a point-in-time snapshot of customer details
             const customerSnapshot = {
                 fullName: body.customerName || "Walk-in Customer",
-                phone: body.customerPhone || null,
+                phone: body.customerPhone || "N/A",
             };
 
-            // --- 2. PRODUCT & STOCK LOGIC ---
-            let subtotal = 0;
-            const finalizedItems = [];
+            let calculatedSubtotal = 0;
+            // Array to hold items for bulk insertion
+            const finalizedItems: any[] = [];
 
+            // 3. Process Items & Update Stock
             for (const item of body.items) {
+                const qty = Number(item.quantity);
+                const price = Math.round(Number(item.priceAtPurchase));
+
                 if (!item.productId) {
-                    subtotal += item.priceAtPurchase * item.quantity;
-                    finalizedItems.push({ ...item, priceAtPurchase: String(item.priceAtPurchase) });
+                    // Branch A: Custom/Non-Inventory Item (Service charges, etc.)
+                    calculatedSubtotal += price * qty;
+                    finalizedItems.push({
+                        name: item.name,
+                        sku: item.sku || "CUSTOM",
+                        quantity: qty,
+                        priceAtPurchase: String(price),
+                        buyingPriceAtPurchase: String(0.00), // Default cost for custom items
+                        productId: null, // Keep keys consistent for Drizzle
+                    });
                     continue;
                 }
 
+                // Branch B: Inventory Product
                 const [product] = await tx.select().from(products).where(eq(products.id, item.productId));
-                if (!product) throw new Error(`Product not found: ${item.name}`);
-                if (product.stock < item.quantity) throw new Error(`Out of stock: ${item.name}`);
 
-                const finalPrice = Math.round(Number(product.price));
-                subtotal += finalPrice * item.quantity;
+                if (!product) throw new Error(`Product "${item.name}" not found in inventory.`);
+                if (product.stock < qty) throw new Error(`Insufficient stock for "${item.name}". Available: ${product.stock}`);
+
+                calculatedSubtotal += price * qty;
 
                 finalizedItems.push({
-                    productId: product.id,
                     name: product.title,
-                    sku: product.sku,
-                    quantity: item.quantity,
-                    priceAtPurchase: String(finalPrice),
+                    sku: product.sku || null,
+                    quantity: qty,
+                    priceAtPurchase: String(price),
+                    buyingPriceAtPurchase: String(product.buyingPrice || "0.00"),
+                    productId: product.id,
                 });
 
+                // Atomic stock deduction
                 await tx.update(products)
-                    .set({ stock: sql`${products.stock} - ${item.quantity}` })
+                    .set({ stock: sql`${products.stock} - ${qty}` })
                     .where(eq(products.id, product.id));
             }
 
-            const totalAmount = subtotal - (body.discount || 0);
+            const totalAmount = calculatedSubtotal - (body.discount || 0);
 
-            // --- 3. CREATE ORDER WITH SNAPSHOT ---
+            // Simple logic for order number (can be replaced with a more robust generator)
+            const orderNumber = `INV-${Date.now().toString().slice(-8)}`;
+
+            // 4. Create the Order Record
             const [newOrder] = await tx.insert(orders).values({
                 customerId: finalCustomerId,
-                customerSnapshot: customerSnapshot, // Saving the snapshot here
+                customerSnapshot: customerSnapshot,
                 servedBy: body.servedBy,
-                orderNumber: await generateUniqueOrderNumber(tx),
-                subtotal: String(subtotal),
+                orderNumber: orderNumber,
+                subtotal: String(calculatedSubtotal),
                 discount: String(body.discount || 0),
                 totalAmount: String(totalAmount),
                 paymentMethod: body.paymentMethod,
@@ -94,10 +120,11 @@ export const createPosOrder = async (req: AuthRequest, res: Response) => {
                 orderNote: body.orderNote,
             }).returning();
 
+            // 5. Bulk Insert Order Items linked to the new Order
             await tx.insert(orderItems).values(
-                finalizedItems.map((item) => ({
-                    orderId: newOrder.id,
+                finalizedItems.map(item => ({
                     ...item,
+                    orderId: newOrder.id,
                 }))
             );
 
@@ -106,6 +133,7 @@ export const createPosOrder = async (req: AuthRequest, res: Response) => {
 
         res.status(201).json({ success: true, data: result });
     } catch (error: any) {
+        // Error handling for transaction failures (e.g., out of stock)
         res.status(400).json({ success: false, message: error.message });
     }
 };

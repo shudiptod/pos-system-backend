@@ -9,7 +9,7 @@ export const products = pgTable("products", {
 
 	title: text("title").notNull(),
 	categoryId: uuid("category_id").references(() => categories.id),
-
+	buyingPrice: decimal("buying_price", { precision: 10, scale: 2 }),
 	price: decimal("price", { precision: 10, scale: 2 }).notNull(),
 	sku: text("sku").unique(),
 	stock: integer("stock").default(0).notNull(),
@@ -29,7 +29,7 @@ export const products = pgTable("products", {
 export const createProductSchema = z.object({
 	title: z.string().min(3, "Title must be at least 3 chars"),
 	categoryId: z.string().uuid("Invalid Category ID"),
-
+	buyingPrice: z.coerce.number().min(0, "Buying price cannot be negative").optional(),
 	price: z.coerce.number().min(0, "Price cannot be negative"),
 	sku: z.string().optional(),
 	stock: z.coerce.number().int().min(0).default(0),

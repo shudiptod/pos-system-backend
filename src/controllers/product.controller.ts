@@ -2,8 +2,9 @@
 import { Request, Response } from "express";
 import { db } from "../db";
 import { products, createProductSchema } from "../models/product.model";
-import { eq, and, ilike, sql, inArray } from "drizzle-orm";
+import { eq, and, ilike, or, SQL } from "drizzle-orm";
 import { AuthRequest } from "../middleware/auth";
+import { categories } from "../models";
 
 
 export const createProduct = async (req: AuthRequest, res: Response) => {
@@ -16,6 +17,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
 
     const [newProduct] = await db.insert(products).values({
       ...parsed.data,
+      buyingPrice: String(parsed.data.buyingPrice), // Convert to string for decimal storage
       price: String(parsed.data.price),
       createdByAdminId: user.id,
       updatedByAdminId: user.id,
@@ -28,21 +30,60 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
   }
 };
 
+
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const { search, categoryId } = req.query;
+
+    // 1. Build the query with a Join
+    let query = db
+      .select({
+        // Product Fields
+        id: products.id,
+        title: products.title,
+        sku: products.sku,
+        price: products.price,
+        buyingPrice: products.buyingPrice,
+        stock: products.stock,
+        images: products.images,
+        createdAt: products.createdAt,
+        // Category Fields (Joined)
+        category: {
+          id: categories.id,
+          name: categories.name,
+          // slug: categories.slug, // Uncomment this if you add slug to your category model
+        },
+      })
+      .from(products)
+      // Left join ensures products show up even if categoryId is null
+      .leftJoin(categories, eq(products.categoryId, categories.id));
+
+    // 2. Build Conditions
     const conditions = [eq(products.isDeleted, false)];
 
     if (search && typeof search === "string") {
-      conditions.push(sql`(${products.title} ILIKE ${`%${search}%`} OR ${products.sku} ILIKE ${`%${search}%`})`);
+      const searchPattern = `%${search}%`;
+
+
+      const searchConditions = [
+        ilike(products.title, searchPattern),
+        products.sku ? ilike(products.sku, searchPattern) : null
+      ].filter(Boolean) as SQL[];
+
+      if (searchConditions.length > 0) {
+        conditions.push(or(...searchConditions)!);
+      }
     }
 
-    // Note: Because categories is a JSONB array of strings in your new model:
     if (categoryId && typeof categoryId === "string") {
-      conditions.push(sql`${products.categoryId} @> ${JSON.stringify([categoryId])}`);
+      conditions.push(eq(products.categoryId, categoryId));
     }
 
-    const data = await db.select().from(products).where(and(...conditions)).orderBy(products.title);
+    // 3. Execute
+    const data = await query
+      .where(and(...conditions))
+      .orderBy(products.title);
+
     res.json({ success: true, data });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

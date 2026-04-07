@@ -50,6 +50,7 @@ export const orderItems = pgTable("order_items", {
 	name: varchar("name", { length: 255 }).notNull(),
 	sku: varchar("sku", { length: 100 }),
 	quantity: integer("quantity").notNull().default(1),
+	buyingPriceAtPurchase: decimal("buying_price_at_purchase", { precision: 12, scale: 2 }).notNull(),
 	priceAtPurchase: decimal("price_at_purchase", { precision: 12, scale: 2 }).notNull(),
 	isDeleted: boolean("is_deleted").default(false),
 });
@@ -76,6 +77,7 @@ const posOrderItemSchema = z.object({
 	productId: z.string().uuid().optional().nullable(),
 	name: z.string().min(1, "Item name is required"),
 	sku: z.string().optional().nullable(),
+	buyingPriceAtPurchase: z.coerce.number().min(0).default(0),
 	priceAtPurchase: z.coerce.number().min(0),
 });
 

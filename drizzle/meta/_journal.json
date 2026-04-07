@@ -22,6 +22,20 @@
       "when": 1775490919641,
       "tag": "0002_useful_morlocks",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775591915217,
+      "tag": "0003_yielding_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775596399078,
+      "tag": "0004_cuddly_wendigo",
+      "breakpoints": true
     }
   ]
 }
