@@ -85,16 +85,15 @@ export const getDashboardOverview = async (req: Request, res: Response) => {
         // We calculate these in a single query for efficiency
         const [todayStats] = await db
             .select({
-                totalRevenue: sql<string>`COALESCE(SUM(${orders.totalAmount}), 0)::text`,
-                orderCount: sql<number>`COUNT(${orders.id})::int`,
-                // Profit calculation: (Price - Buying Price) * Quantity
+                totalRevenue: sql<string>`COALESCE(SUM(DISTINCT ${orders.totalAmount}), 0)::text`, // Distinct sum if order total is stored on order table
+                orderCount: sql<number>`COUNT(DISTINCT ${orders.id})::int`, // FIX: Use DISTINCT here
                 totalProfit: sql<string>`
-                    COALESCE(
-                        SUM(
-                            (${orderItems.priceAtPurchase} - COALESCE(${orderItems.buyingPriceAtPurchase}, 0)) * ${orderItems.quantity}
-                        ), 
-                        0
-                    )::text`
+            COALESCE(
+                SUM(
+                    (${orderItems.priceAtPurchase} - COALESCE(${orderItems.buyingPriceAtPurchase}, 0)) * ${orderItems.quantity}
+                ), 
+                0
+            )::text`
             })
             .from(orders)
             .leftJoin(orderItems, eq(orders.id, orderItems.orderId))
