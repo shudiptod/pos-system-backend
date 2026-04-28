@@ -5,7 +5,7 @@ import { products } from "../models/product.model";
 import { categories } from "../models/category.model";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { format, startOfDay } from "date-fns"; // Recommended for easy date cleaning
-
+import { toZonedTime } from "date-fns-tz";
 export const getDynamicSalesReport = async (req: Request, res: Response) => {
     try {
         const { startDate, endDate, selectedColumns, filterCategoryIds } = req.body;
@@ -79,7 +79,9 @@ export const getDynamicSalesReport = async (req: Request, res: Response) => {
 
 export const getDashboardOverview = async (req: Request, res: Response) => {
     try {
-        const today = startOfDay(new Date());
+        const timeZone = 'Asia/Dhaka';
+        const nowInDhaka = toZonedTime(new Date(), timeZone);
+        const today = startOfDay(nowInDhaka);
 
         // 1. FETCH THE "BIG THREE" (Today's Stats)
         // We calculate these in a single query for efficiency
